@@ -55,8 +55,11 @@ def exercise_1():
 
     print('Exercise E:')
 
+    mean_y = y.mean()
+
     cov_matrix = numpy.cov(x, y)
 
+    print(f'Y mean: {mean_y}')
     print(f'Cov matrix of X and Y:\n {cov_matrix}')
 
     print('Exercise F:')
