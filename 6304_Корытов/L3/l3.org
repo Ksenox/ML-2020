@@ -1,0 +1,500 @@
+#+HTML_HEAD: <link rel="stylesheet" type="text/css" href="https://gongzhitaao.org/orgcss/org.css"/>
+#+PROPERTY: header-args:python :session *l2*
+#+PROPERTY: header-args:python+ :exports both
+#+PROPERTY: header-args:python+ :tangle yes
+#+LATEX_CLASS: extarticle
+#+LATEX_HEADER_EXTRA: \usepackage{../styles/orgExportStyle}
+#+LATEX_HEADER_EXTRA: \usepackage{../styles/reportFormat}
+#+LATEX_HEADER_EXTRA: \usepackage{../styles/russianLocale}
+#+LATEX_HEADER_EXTRA: \usepackage{../styles/mintedSourceCode}
+
+#+OPTIONS: toc:nil
+
+#+begin_src elisp :exports none
+(setq-local org-image-actual-width '(1024))
+(setq-local org-html-htmlize-output-type 'css)
+(setq-local org-latex-listings 'minted)
+#+end_src
+
+#+RESULTS:
+: minted
+
+* Загрузка данных
+#+begin_src python
+import pandas as pd
+import numpy as np
+
+all_data = pd.read_csv('../data/dataset_group.csv', header=None)
+
+unique_id = list(set(all_data[1]))
+print(len(unique_id))
+#+end_src
+
+#+RESULTS:
+: 1139
+
+#+begin_src python
+items = list(set(all_data[2]))
+print(len(items))
+#+end_src
+
+#+RESULTS:
+: 38
+
+#+begin_src python :display plain
+dataset = [
+    [
+        elem for elem in all_data[all_data[1] == id][2]
+        if elem in items
+    ]
+    for id in unique_id
+]
+print(dataset[:2]) 
+#+end_src
+
+#+RESULTS:
+: [['yogurt', 'pork', 'sandwich bags', 'lunch meat', 'all- purpose', 'flour', 'soda', 'butter', 'vegetables', 'beef', 'aluminum foil', 'all- purpose', 'dinner rolls', 'shampoo', 'all- purpose', 'mixes', 'soap', 'laundry detergent', 'ice cream', 'dinner rolls'], ['toilet paper', 'shampoo', 'hand soap', 'waffles', 'vegetables', 'cheeses', 'mixes', 'milk', 'sandwich bags', 'laundry detergent', 'dishwashing liquid/detergent', 'waffles', 'individual meals', 'hand soap', 'vegetables', 'individual meals', 'yogurt', 'cereals', 'shampoo', 'vegetables', 'aluminum foil', 'tortillas', 'mixes']]
+
+* Подготовка данных
+#+begin_src python :display plain
+from mlxtend.preprocessing import TransactionEncoder
+
+te = TransactionEncoder()
+te_ary = te.fit_transform(dataset)
+df = pd.DataFrame(te_ary, columns=te.columns_)
+pd.set_option('display.max_columns', 7)
+
+with open('./output/df.txt', 'w') as f:
+    f.write(str(df))
+
+df
+#+end_src
+
+#+RESULTS:
+#+begin_example
+        all- purpose  aluminum foil  bagels  ...  vegetables  waffles  yogurt
+  0             True           True   False  ...        True    False    True
+  1            False           True   False  ...        True     True    True
+  2            False          False    True  ...        True    False   False
+  3             True          False   False  ...       False    False   False
+  4             True          False   False  ...        True     True    True
+  ...            ...            ...     ...  ...         ...      ...     ...
+  1134          True          False   False  ...       False    False   False
+  1135         False          False   False  ...        True    False   False
+  1136         False          False    True  ...        True    False    True
+  1137          True          False   False  ...        True     True    True
+  1138         False          False   False  ...        True    False   False
+
+  [1139 rows x 38 columns]
+#+end_example
+
+* Ассоциативный анализ с использованием алгоритма Apriori
+#+begin_src python :display plain
+from mlxtend.frequent_patterns import apriori
+
+results = apriori(df, min_support=0.3, use_colnames=True)
+results['length'] = results['itemsets'].apply(len)
+old_results = results
+
+with open('./output/results.txt', 'w') as f:
+    f.write(str(results))
+    
+with open('./output/results_gt2.txt', 'w') as f:
+    f.write(str(results[results['length'] > 1]))
+    
+results
+#+end_src
+
+#+RESULTS:
+#+begin_example
+       support                                    itemsets  length
+  0   0.374890                              (all- purpose)       1
+  1   0.384548                             (aluminum foil)       1
+  2   0.385426                                    (bagels)       1
+  3   0.374890                                      (beef)       1
+  4   0.367867                                    (butter)       1
+  5   0.395961                                   (cereals)       1
+  6   0.390694                                   (cheeses)       1
+  7   0.379280                                (coffee/tea)       1
+  8   0.388938                              (dinner rolls)       1
+  9   0.388060              (dishwashing liquid/detergent)       1
+  10  0.389816                                      (eggs)       1
+  11  0.352941                                     (flour)       1
+  12  0.370500                                    (fruits)       1
+  13  0.345917                                 (hand soap)       1
+  14  0.398595                                 (ice cream)       1
+  15  0.375768                          (individual meals)       1
+  16  0.376646                                     (juice)       1
+  17  0.371378                                   (ketchup)       1
+  18  0.378402                         (laundry detergent)       1
+  19  0.395083                                (lunch meat)       1
+  20  0.380158                                      (milk)       1
+  21  0.375768                                     (mixes)       1
+  22  0.362599                              (paper towels)       1
+  23  0.371378                                     (pasta)       1
+  24  0.355575                                      (pork)       1
+  25  0.421422                                   (poultry)       1
+  26  0.367867                             (sandwich bags)       1
+  27  0.349429                           (sandwich loaves)       1
+  28  0.368745                                   (shampoo)       1
+  29  0.379280                                      (soap)       1
+  30  0.390694                                      (soda)       1
+  31  0.373134                           (spaghetti sauce)       1
+  32  0.360843                                     (sugar)       1
+  33  0.378402                              (toilet paper)       1
+  34  0.369622                                 (tortillas)       1
+  35  0.739245                                (vegetables)       1
+  36  0.394205                                   (waffles)       1
+  37  0.384548                                    (yogurt)       1
+  38  0.310799                 (aluminum foil, vegetables)       2
+  39  0.300263                        (vegetables, bagels)       2
+  40  0.310799                       (vegetables, cereals)       2
+  41  0.309043                       (vegetables, cheeses)       2
+  42  0.308165                  (vegetables, dinner rolls)       2
+  43  0.306409  (vegetables, dishwashing liquid/detergent)       2
+  44  0.326602                          (eggs, vegetables)       2
+  45  0.302897                     (vegetables, ice cream)       2
+  46  0.309043             (vegetables, laundry detergent)       2
+  47  0.311677                    (vegetables, lunch meat)       2
+  48  0.331870                       (vegetables, poultry)       2
+  49  0.305531                          (vegetables, soda)       2
+  50  0.315189                       (vegetables, waffles)       2
+  51  0.319579                        (vegetables, yogurt)       2
+#+end_example
+
+#+begin_src python :display plain
+support_data = []
+
+for min_support in np.arange(0.05, 1, 0.01):
+    r = apriori(df, min_support=min_support)
+    r['length'] = r['itemsets'].apply(len)
+    max_len = np.max(r['length'])
+    if np.isnan(max_len):
+        break
+    datum = {
+        'min_support': min_support,
+        'total': len(r),
+        **{n: 0 for n in range(1, max_len + 1)}
+    }
+    for res in r.itertuples(index=False):
+        datum[res.length] += 1
+    
+    if min_support % 0.1 == 1:
+        print('Analyzing', min_support)
+        
+    support_data.append(datum)
+
+support_df = pd.DataFrame(support_data).fillna(value=0)
+support_df
+#+end_src
+
+#+RESULTS:
+#+begin_example
+      min_support  total   1      2       3       4
+  0          0.05  15749  38  703.0  8402.0  6606.0
+  1          0.06  10482  38  703.0  7185.0  2556.0
+  2          0.07   4796  38  703.0  3723.0   332.0
+  3          0.08   1836  38  703.0  1078.0    17.0
+  4          0.09   1426  38  703.0   685.0     0.0
+  ..          ...    ...  ..    ...     ...     ...
+  64         0.69      1   1    0.0     0.0     0.0
+  65         0.70      1   1    0.0     0.0     0.0
+  66         0.71      1   1    0.0     0.0     0.0
+  67         0.72      1   1    0.0     0.0     0.0
+  68         0.73      1   1    0.0     0.0     0.0
+
+  [69 rows x 6 columns]
+#+end_example
+
+#+begin_src python
+min_indices = support_df[[1, 2, 3, 4]].idxmin()
+min_support = pd.Series(list(support_df['min_support'][min_indices]), index=min_indices.index)
+min_support
+#+end_src
+
+#+RESULTS:
+: 1    0.43
+: 2    0.34
+: 3    0.17
+: 4    0.09
+: dtype: float64
+
+#+begin_src python :file img/support.png
+from matplotlib import pyplot as plt
+import matplotlib as mpl
+
+mpl.rcParams['figure.dpi'] = 200
+mpl.rcParams['figure.facecolor'] = '1'
+
+fig, ax = plt.subplots(1, 1, figsize=(10, 6))
+cmap = mpl.cm.get_cmap('Set1')
+
+support_df.plot(ax=ax, logy='sym', x='min_support', colormap=cmap)
+for i, value in min_support.iteritems():
+    ax.axvline(value, label=f'{i} (min)', lw=1, linestyle='--', color=cmap(i / len(min_support)))
+ax.legend()
+pass
+#+end_src
+
+#+RESULTS:
+[[file:img/support.png]]
+
+#+begin_src python
+results = apriori(df, min_support=0.38, use_colnames=True, max_len=1)
+new_items = [list(elem)[0] for elem in results['itemsets']]
+new_dataset = [
+    [
+        elem for elem in all_data[all_data[1] == id][2]
+        if elem in new_items
+    ]
+    for id in unique_id
+]
+print(new_dataset[:2])
+#+end_src
+
+#+RESULTS:
+: [['yogurt', 'lunch meat', 'soda', 'vegetables', 'aluminum foil', 'dinner rolls', 'ice cream', 'dinner rolls'], ['waffles', 'vegetables', 'cheeses', 'milk', 'dishwashing liquid/detergent', 'waffles', 'vegetables', 'yogurt', 'cereals', 'vegetables', 'aluminum foil']]
+
+#+begin_src python :display plain
+te = TransactionEncoder()
+te_ary = te.fit_transform(new_dataset)
+
+new_df = pd.DataFrame(te_ary, columns=te.columns_)
+
+with open('./output/new_df.txt', 'w') as f:
+    f.write(str(new_df))
+
+new_df
+#+end_src
+
+#+RESULTS:
+#+begin_example
+        aluminum foil  bagels  cereals  ...  vegetables  waffles  yogurt
+  0              True   False    False  ...        True    False    True
+  1              True   False     True  ...        True     True    True
+  2             False    True     True  ...        True    False   False
+  3             False   False     True  ...       False    False   False
+  4             False   False    False  ...        True     True    True
+  ...             ...     ...      ...  ...         ...      ...     ...
+  1134          False   False     True  ...       False    False   False
+  1135          False   False     True  ...        True    False   False
+  1136          False    True    False  ...        True    False    True
+  1137          False   False    False  ...        True     True    True
+  1138          False   False    False  ...        True    False   False
+
+  [1139 rows x 15 columns]
+#+end_example
+
+#+begin_src python :display plain
+new_results = apriori(new_df, min_support=0.3, use_colnames=True)
+new_results['length'] = new_results['itemsets'].apply(len)
+
+with open('./output/new_results.txt', 'w') as f:
+    f.write(str(new_results))
+
+new_results
+#+end_src
+
+#+RESULTS:
+#+begin_example
+       support                                    itemsets  length
+  0   0.384548                             (aluminum foil)       1
+  1   0.385426                                    (bagels)       1
+  2   0.395961                                   (cereals)       1
+  3   0.390694                                   (cheeses)       1
+  4   0.388938                              (dinner rolls)       1
+  5   0.388060              (dishwashing liquid/detergent)       1
+  6   0.389816                                      (eggs)       1
+  7   0.398595                                 (ice cream)       1
+  8   0.395083                                (lunch meat)       1
+  9   0.380158                                      (milk)       1
+  10  0.421422                                   (poultry)       1
+  11  0.390694                                      (soda)       1
+  12  0.739245                                (vegetables)       1
+  13  0.394205                                   (waffles)       1
+  14  0.384548                                    (yogurt)       1
+  15  0.310799                 (aluminum foil, vegetables)       2
+  16  0.300263                        (vegetables, bagels)       2
+  17  0.310799                       (vegetables, cereals)       2
+  18  0.309043                       (cheeses, vegetables)       2
+  19  0.308165                  (vegetables, dinner rolls)       2
+  20  0.306409  (vegetables, dishwashing liquid/detergent)       2
+  21  0.326602                          (vegetables, eggs)       2
+  22  0.302897                     (vegetables, ice cream)       2
+  23  0.311677                    (vegetables, lunch meat)       2
+  24  0.331870                       (vegetables, poultry)       2
+  25  0.305531                          (vegetables, soda)       2
+  26  0.315189                       (vegetables, waffles)       2
+  27  0.319579                        (vegetables, yogurt)       2
+#+end_example
+
+#+NAME: new2_results
+#+begin_src python :display plain
+new2_results = apriori(new_df, min_support=0.15, use_colnames=True)
+new2_results['length'] = new2_results['itemsets'].apply(len)
+new2_results = new2_results[
+    new2_results.apply(
+        lambda d: d['length'] > 1 and ('yougurt' in d['itemsets'] or 'waffles' in d['itemsets']), axis=1
+    )
+].reset_index(drop=True)
+
+with open('output/new2_results.txt', 'w') as f:
+    f.write(str(new2_results))
+
+new2_results
+#+end_src
+
+#+RESULTS: new2_results
+#+begin_example
+       support                                 itemsets  length
+  0   0.169447                 (aluminum foil, waffles)       2
+  1   0.159789                        (waffles, bagels)       2
+  2   0.160667                       (waffles, cereals)       2
+  3   0.172959                       (cheeses, waffles)       2
+  4   0.169447                  (waffles, dinner rolls)       2
+  5   0.175593  (waffles, dishwashing liquid/detergent)       2
+  6   0.169447                          (eggs, waffles)       2
+  7   0.172959                     (waffles, ice cream)       2
+  8   0.184372                    (waffles, lunch meat)       2
+  9   0.166813                       (waffles, poultry)       2
+  10  0.177349                          (waffles, soda)       2
+  11  0.315189                    (vegetables, waffles)       2
+  12  0.173837                        (waffles, yogurt)       2
+  13  0.157155        (vegetables, waffles, lunch meat)       3
+#+end_example
+
+#+begin_src python :noweb yes :tangle l3_yougurt.py :eval never
+<<new2_results>>
+#+end_src
+
+#+begin_src python :display plain
+new3_items = [elem for elem in items if elem not in new_items]
+new3_dataset = [
+    [
+        elem for elem in all_data[all_data[1] == id][2]
+        if elem in new3_items
+    ]
+    for id in unique_id
+]
+
+te = TransactionEncoder()
+te_ary = te.fit_transform(new3_dataset)
+
+new3_df = pd.DataFrame(te_ary, columns=te.columns_)
+
+with open('./output/new3_df.txt', 'w') as f:
+    f.write(str(new3_df))
+
+new3_df
+#+end_src
+
+#+RESULTS:
+#+begin_example
+        all- purpose   beef  butter  ...  sugar  toilet paper  tortillas
+  0             True   True    True  ...  False         False      False
+  1            False  False   False  ...  False          True       True
+  2            False  False   False  ...  False          True      False
+  3             True  False   False  ...  False          True      False
+  4             True  False   False  ...  False          True       True
+  ...            ...    ...     ...  ...    ...           ...        ...
+  1134          True   True   False  ...   True         False      False
+  1135         False  False   False  ...  False         False      False
+  1136         False   True   False  ...   True         False       True
+  1137          True   True   False  ...   True          True      False
+  1138         False  False   False  ...  False         False      False
+
+  [1139 rows x 23 columns]
+#+end_example
+
+#+begin_src python :display plain
+new3_results = apriori(new3_df, min_support=0.1, use_colnames=True)
+new3_results
+#+end_src
+
+#+RESULTS:
+#+begin_example
+        support                         itemsets
+  0    0.374890                   (all- purpose)
+  1    0.374890                           (beef)
+  2    0.367867                         (butter)
+  3    0.379280                     (coffee/tea)
+  4    0.352941                          (flour)
+  ..        ...                              ...
+  271  0.151888  (spaghetti sauce, toilet paper)
+  272  0.148376     (spaghetti sauce, tortillas)
+  273  0.151888            (sugar, toilet paper)
+  274  0.147498               (sugar, tortillas)
+  275  0.156277        (tortillas, toilet paper)
+
+  [276 rows x 2 columns]
+#+end_example
+
+#+name: df_s
+#+begin_src python :display plain
+s_results = new3_results[new3_results.apply(
+    lambda r: len([e for e in r['itemsets'] if e.startswith('s')]) > 1,
+    axis=1
+)]
+
+with open('output/s_results.txt', 'w') as f:
+    f.write(str(s_results))
+    
+s_results
+#+end_src
+
+#+RESULTS:
+#+begin_example
+        support                            itemsets
+  248  0.137840    (sandwich bags, sandwich loaves)
+  249  0.146620            (sandwich bags, shampoo)
+  250  0.158911               (soap, sandwich bags)
+  251  0.147498    (sandwich bags, spaghetti sauce)
+  252  0.131694              (sandwich bags, sugar)
+  255  0.150132          (shampoo, sandwich loaves)
+  256  0.158033             (soap, sandwich loaves)
+  257  0.150132  (spaghetti sauce, sandwich loaves)
+  258  0.136962            (sugar, sandwich loaves)
+  261  0.151010                     (soap, shampoo)
+  262  0.139596          (spaghetti sauce, shampoo)
+  263  0.147498                    (sugar, shampoo)
+  266  0.160667             (soap, spaghetti sauce)
+  267  0.154522                       (soap, sugar)
+  270  0.144864            (spaghetti sauce, sugar)
+#+end_example
+
+#+begin_src python :noweb yes :tangle l3_df_s.py :eval never
+<<df_s>>
+#+end_src
+
+#+name: df_ss
+#+begin_src python :display plain
+# new3_results[new3_results['support'] > 0.1 | new3_results['support'] < 0.25]
+ss_results = new3_results[(new3_results['support'] > 0.1) & (new3_results['support'] < 0.25)]
+
+with open('output/ss_results.txt', 'w') as f:
+    f.write(str(ss_results))
+    
+ss_results
+#+end_src
+
+#+RESULTS: df_ss
+#+begin_example
+        support                         itemsets
+  23   0.144864             (all- purpose, beef)
+  24   0.147498           (butter, all- purpose)
+  25   0.146620       (coffee/tea, all- purpose)
+  26   0.142230            (all- purpose, flour)
+  27   0.150132           (fruits, all- purpose)
+  ..        ...                              ...
+  271  0.151888  (spaghetti sauce, toilet paper)
+  272  0.148376     (spaghetti sauce, tortillas)
+  273  0.151888            (sugar, toilet paper)
+  274  0.147498               (sugar, tortillas)
+  275  0.156277        (tortillas, toilet paper)
+
+  [253 rows x 2 columns]
+#+end_example
+
+#+begin_src python :noweb yes :tangle l3_df_ss.py :eval never
+<<df_ss>>
+#+end_src
