@@ -1,0 +1,478 @@
+#+HTML_HEAD: <link rel="stylesheet" type="text/css" href="https://gongzhitaao.org/orgcss/org.css"/>
+#+PROPERTY: header-args:python :session *l2*
+#+PROPERTY: header-args:python+ :exports both
+#+PROPERTY: header-args:python+ :tangle yes
+
+#+begin_src elisp
+(setq-local org-image-actual-width '(1024))
+(setq-local org-html-htmlize-output-type 'css)
+#+end_src
+
+#+RESULTS:
+: css
+
+* Выполнение
+** Загрузка данных
+#+begin_src python :display plain :exports both
+import pandas as pd
+import numpy as np
+
+df = pd.read_csv('../data/glass.csv')
+
+var_names = list(df.columns)
+
+labels = df.to_numpy('int')[:, -1]
+data = df.to_numpy('float')[:,:-1]
+df
+#+end_src
+
+#+RESULTS:
+#+begin_example
+            RI     Na    Mg    Al     Si     K    Ca    Ba   Fe  Type
+  0    1.52101  13.64  4.49  1.10  71.78  0.06  8.75  0.00  0.0     1
+  1    1.51761  13.89  3.60  1.36  72.73  0.48  7.83  0.00  0.0     1
+  2    1.51618  13.53  3.55  1.54  72.99  0.39  7.78  0.00  0.0     1
+  3    1.51766  13.21  3.69  1.29  72.61  0.57  8.22  0.00  0.0     1
+  4    1.51742  13.27  3.62  1.24  73.08  0.55  8.07  0.00  0.0     1
+  ..       ...    ...   ...   ...    ...   ...   ...   ...  ...   ...
+  209  1.51623  14.14  0.00  2.88  72.61  0.08  9.18  1.06  0.0     7
+  210  1.51685  14.92  0.00  1.99  73.06  0.00  8.40  1.59  0.0     7
+  211  1.52065  14.36  0.00  2.02  73.42  0.00  8.44  1.64  0.0     7
+  212  1.51651  14.38  0.00  1.94  73.61  0.00  8.48  1.57  0.0     7
+  213  1.51711  14.23  0.00  2.08  73.36  0.00  8.62  1.67  0.0     7
+
+  [214 rows x 10 columns]
+#+end_example
+** Нормировка данных
+#+begin_src python
+from sklearn import preprocessing
+
+data = preprocessing.minmax_scale(data)
+#+end_src
+
+#+RESULTS:
+
+** Диаграмма рассеяния
+#+begin_src python :file img/d1.png
+from matplotlib import pyplot as plt
+import matplotlib as mpl
+
+mpl.rcParams['figure.dpi'] = 200
+mpl.rcParams['figure.facecolor'] = '1'
+
+def plot_scatter(data):
+    fig, axes = plt.subplots(2, 4, figsize=(10, 4))
+    
+    for i in range(data.shape[1] - 1):
+        axes[i // 4, i % 4].scatter(data[:,i], data[:,(i+1)], c=labels, cmap='tab10')
+      
+        axes[i // 4, i % 4].set_xlabel(var_names[i])
+        axes[i // 4, i % 4].set_ylabel(var_names[i+1])
+        # axes[i // 4, i % 4].legend()
+        
+    return fig
+
+fig = plot_scatter(data)
+fig.tight_layout()
+#+end_src
+
+#+RESULTS:
+[[file:img/d1.png]]
+
+** Соответствие цвета и класса
+#+begin_src python :file img/d2.png
+from matplotlib import cm, colors
+
+norm = colors.Normalize(vmin=min(labels), vmax=max(labels))
+cmap = cm.get_cmap('tab10')
+unique_labels = list(set(labels))
+label_colors = [cmap(norm(label)) for label in unique_labels]
+fig, ax = plt.subplots(figsize=(6, 2))
+
+ax.bar(range(len(unique_labels)), 1, color=label_colors)
+ax.set_xticklabels([0, *unique_labels])
+pass
+#+end_src
+
+#+RESULTS:
+[[file:img/d2.png]]
+
+** Метод главных компонент
+#+begin_src python
+from sklearn.decomposition import PCA
+
+pca = PCA(n_components=2)
+pca_data = pca.fit_transform(data)
+print(data.shape, pca_data.shape)
+#+end_src
+
+#+RESULTS:
+: (214, 9) (214, 2)
+
+*** Значение объясненной дисперсии и собственные числа
+#+begin_src python
+print(pca.explained_variance_ratio_)
+print(pca.singular_values_)
+
+with open('./output/file1.tex', 'w') as f:
+    f.write(f'explained_variance_ratio_: {pca.explained_variance_ratio_}\n')
+    f.write(f'singular_values: {pca.singular_values_}\n')
+#+end_src
+
+#+RESULTS:
+: [0.45429569 0.17990097]
+: [5.1049308  3.21245688]
+
+*** Диаграмма рассеяния после метода главных компонент
+#+begin_src python :file img/d3.png
+fig, ax = plt.subplots(figsize=(6, 6))
+ax.scatter(pca_data[:,0], pca_data[:,1], c=labels, cmap='tab10')
+
+pass
+#+end_src
+
+#+RESULTS:
+[[file:img/d3.png]]
+
+*** Количество компонент для 85% дисперсии
+#+begin_src python
+from tabulate import tabulate
+
+def get_variances(threshold, get_pca, max_n=9):
+    n_components = 2
+    variances = []
+    
+    pca_ret, pca_data_ret = None, None
+
+    while n_components <= max_n:
+        pca_2 = get_pca(n_components=n_components)
+        pca_data_2 = pca_2.fit_transform(data)
+        variance = np.sum(pca_2.explained_variance_ratio_)
+        variances.append((n_components, variance))
+        if variance > threshold and pca_ret is None:
+            pca_ret = pca_2
+            pca_data_ret = pca_data_2
+        n_components += 1
+    
+    return np.array(variances), pca_ret, pca_data_ret
+    
+variances, pca_2, pca_data_2 = get_variances(0.85, lambda n_components: PCA(n_components=n_components))
+
+with open('./output/table_dispersion.tex', 'w') as f:
+    f.write(tabulate(variances, headers=['n_components', 'variance'], tablefmt='latex_booktabs'))
+    
+print(tabulate(variances, headers=['n_components', 'variance'], tablefmt='orgtbl'))
+#+end_src
+
+#+RESULTS:
+: |   n_components |   variance |
+: |----------------+------------|
+: |              2 |   0.634197 |
+: |              3 |   0.760691 |
+: |              4 |   0.85867  |
+: |              5 |   0.927294 |
+: |              6 |   0.969435 |
+: |              7 |   0.995533 |
+: |              8 |   0.999861 |
+: |              9 |   1        |
+
+*** Обратное преобразование
+#+begin_src python
+inverse_data = pca_2.inverse_transform(pca_data_2)
+print(pca_data_2.shape, inverse_data.shape)
+#+end_src
+
+#+RESULTS:
+: (214, 4) (214, 9)
+
+#+begin_src python
+def calculate_error(data, reverse_data):
+    mse = (np.square(data - reverse_data)).mean(axis=None)
+    return mse
+
+print(calculate_error(data, inverse_data))
+#+end_src
+
+#+RESULTS:
+: 0.0042093981609607495
+
+#+begin_src python :file img/d4.png
+fig = plot_scatter(inverse_data)
+fig.tight_layout()
+#+end_src
+
+#+RESULTS:
+[[file:img/d4.png]]
+
+*** Параметр =svd_solver=
+Стандартное значение - =auto=
+#+begin_src python
+results = []
+options = 'auto', 'full', 'arpack', 'randomized'
+for svd_solver in options:
+    variances, _, _ = get_variances(0.85, lambda n_components: PCA(n_components=n_components, svd_solver=svd_solver), max_n=8)
+    if len(results) == 0:
+        results.append(variances[:,0])
+    results.append(variances[:,1])
+
+results = np.array(results).T
+
+print(tabulate(results, headers=['n_components', *options], tablefmt='orgtbl'))
+with open('./output/table_solver.tex', 'w') as f:
+    f.write(tabulate(results, headers=['n_components', *options], tablefmt='latex_booktabs'))
+#+end_src
+
+#+RESULTS:
+: |   n_components |     auto |     full |   arpack |   randomized |
+: |----------------+----------+----------+----------+--------------|
+: |              2 | 0.634197 | 0.634197 | 0.634197 |     0.634197 |
+: |              3 | 0.760691 | 0.760691 | 0.760691 |     0.760691 |
+: |              4 | 0.85867  | 0.85867  | 0.85867  |     0.85867  |
+: |              5 | 0.927294 | 0.927294 | 0.927294 |     0.927294 |
+: |              6 | 0.969435 | 0.969435 | 0.969435 |     0.969435 |
+: |              7 | 0.995533 | 0.995533 | 0.995533 |     0.995533 |
+: |              8 | 0.999861 | 0.999861 | 0.999861 |     0.999861 |
+
+** KernelPCA
+*** =KernelPCA= с линейным ядром
+#+begin_src python :file img/d5.png
+from sklearn.decomposition import KernelPCA
+
+kernelpca = KernelPCA(n_components=10, kernel='linear')
+kernelpca_data = kernelpca.fit_transform(data)
+
+cum_lambas = np.cumsum(kernelpca.lambdas_)
+
+fig, ax = plt.subplots(figsize=(10, 6))
+ax.plot(cum_lambas)
+ax.grid(True)
+ax.set_ylim(0, max(cum_lambas) + 5)
+ax.set_xlabel('n_components')
+ax.set_ylabel('Lambda')
+ax.set_xticklabels(range(1, 11))
+ax.set_xticks(range(0, 10))
+
+pass
+#+end_src
+
+#+RESULTS:
+[[file:img/d5.png]]
+*** Полиномиальное ядро
+#+begin_src python :file img/d6.png
+
+def plot_labmdas(params, xlabel='lambda', norm=False, **kwargs):
+    fig, ax = plt.subplots(figsize=(10, 6))
+    colors = plt.cm.viridis(np.linspace(0, 1, len(params)))
+
+    ax.set_title(str(kwargs))
+
+    for i, param in enumerate(params):
+        kpca = KernelPCA(**param, **kwargs)
+        kpca.fit_transform(data)
+        plot_data = np.cumsum(kpca.lambdas_)
+        if norm:
+            plot_data = plot_data / np.max(plot_data)
+        ax.plot(plot_data, label=str(param), color=colors[i])
+    
+    ax.legend()
+    ax.grid()
+    ax.set_xlabel('n_components')
+    ax.set_ylabel(xlabel)
+    return fig
+    
+fig = plot_labmdas([{ 'degree': i } for i in range(1, 10)], kernel='poly', n_components=15)
+
+fig.tight_layout()
+#+end_src
+
+#+RESULTS:
+[[file:img/d6.png]]
+
+*** Черт знает что
+#+begin_src python :file img/d7.png
+fig = plot_labmdas([{ 'degree': i } for i in range(1, 10)], norm=True, kernel='poly', n_components=15)
+#+end_src
+
+#+RESULTS:
+[[file:img/d7.png]] 
+*** Полиномиальное ядро и gamma
+#+begin_src python :file img/d8.png
+fig = plot_labmdas([{ 'gamma': i } for i in np.arange(1/1000, 1, 1/10)], norm=True, kernel='poly', n_components=15)
+#+end_src
+
+#+RESULTS:
+[[file:img/d8.png]]
+*** Полиномиальное ядро и coef0
+#+begin_src python :file img/d9.png
+fig = plot_labmdas([{ 'coef0': i } for i in range(0, 10)], norm=True, kernel='poly', n_components=15)
+#+end_src
+
+#+RESULTS:
+[[file:img/d9.png]]
+
+*** RBF и gamma
+#+begin_src python :file img/d10.png
+fig = plot_labmdas([{ 'gamma': i } for i in np.arange(1/1000, 1, 1/10)], norm=True, kernel='rbf', n_components=15)
+#+end_src
+
+#+RESULTS:
+[[file:img/d10.png]]
+
+*** Сигмоидальное ядро и gamma
+#+begin_src python :file img/d11.png
+fig = plot_labmdas([{ 'gamma': i } for i in np.arange(1/1000, 1, 1/10)], norm=True, kernel='sigmoid', n_components=15)
+#+end_src
+
+#+RESULTS:
+[[file:img/d11.png]]
+
+*** Сигмоидальное ядро и coef0
+#+begin_src python :file img/d12.png
+fig = plot_labmdas([{ 'coef0': i } for i in range(0, 10)], norm=True, kernel='sigmoid', n_components=15)
+#+end_src
+
+#+RESULTS:
+[[file:img/d12.png]]
+
+*** cosine
+#+begin_src python :file img/d13.png
+fig = plot_labmdas([{}], norm=True, kernel='cosine', n_components=15)
+#+end_src
+
+#+RESULTS:
+[[file:img/d13.png]]
+
+*** Сравнение всего
+#+begin_src python :file img/d14.png
+fig = plot_labmdas([
+    { 'kernel': 'poly' },
+    { 'kernel': 'rbf' },
+    { 'kernel': 'sigmoid' },
+    { 'kernel': 'cosine' },
+], norm=True, n_components=15)
+#+end_src
+
+#+RESULTS:
+[[file:img/d14.png]]
+
+** SparsePCA
+#+begin_src python
+from sklearn.decomposition import SparsePCA
+
+sparce_pca = SparsePCA(n_components=2)
+
+spca_data = sparce_pca.fit_transform(data)
+print(data.shape, pca_data.shape)
+#+end_src
+
+#+RESULTS:
+: (214, 9) (214, 2)
+
+
+*** Сравнение
+#+begin_src python
+print(np.mean(sparce_pca.components_ == 0))
+print(np.mean(pca.components_ == 0))
+
+print(tabulate(sparce_pca.components_, tablefmt='fancy_grid', floatfmt='.4f'))
+print(tabulate(pca.components_, tablefmt='fancy_grid', floatfmt='.4f'))
+
+with open('./output/sparsepca_data.txt', 'w') as f:
+    f.write('Компоненты SparcePCA:\n')
+    f.write(tabulate(sparce_pca.components_, tablefmt='simple', floatfmt=".3f"))
+    
+    f.write('\nКомпоненты PCA:\n')
+    f.write(tabulate(pca.components_, tablefmt='simple', floatfmt=".3f"))
+    
+#+end_src
+
+#+RESULTS:
+#+begin_example
+  0.7777777777777778
+  0.0
+  ╒════════╤════════╤════════╤═════════╤════════╤════════╤════════╤═════════╤════════╕
+  │ 0.0000 │ 0.0000 │ 0.9980 │ -0.0372 │ 0.0000 │ 0.0000 │ 0.0000 │ -0.0503 │ 0.0000 │
+  ├────────┼────────┼────────┼─────────┼────────┼────────┼────────┼─────────┼────────┤
+  │ 0.0000 │ 0.0000 │ 0.0000 │  0.0000 │ 0.0000 │ 0.0000 │ 0.0000 │  0.0000 │ 1.0000 │
+  ╘════════╧════════╧════════╧═════════╧════════╧════════╧════════╧═════════╧════════╛
+  ╒════════╤═════════╤═════════╤═════════╤═════════╤═════════╤════════╤═════════╤═════════╕
+  │ 0.0342 │  0.1104 │ -0.9090 │  0.2490 │  0.0508 │ -0.0027 │ 0.1409 │  0.2668 │ -0.0680 │
+  ├────────┼─────────┼─────────┼─────────┼─────────┼─────────┼────────┼─────────┼─────────┤
+  │ 0.5133 │ -0.1987 │ -0.1171 │ -0.3474 │ -0.2164 │ -0.1293 │ 0.5023 │ -0.1643 │  0.4688 │
+  ╘════════╧═════════╧═════════╧═════════╧═════════╧═════════╧════════╧═════════╧═════════╛
+#+end_example
+
+*** Диаграмма рассеяния
+#+begin_src python :file img/s1.png
+fig, [ax1, ax2] = plt.subplots(1, 2, figsize=(10, 4))
+ax1.scatter(pca_data[:,0], pca_data[:,1], c=labels, cmap='tab10')
+ax2.scatter(spca_data[:,0], spca_data[:,1], c=labels, cmap='tab10')
+ax1.set_title('PCA')
+ax2.set_title('SparsePCA')
+fig.tight_layout()
+pass
+#+end_src
+
+#+RESULTS:
+[[file:img/s1.png]]
+
+*** Параметры
+#+begin_src python
+# fig, ax = plt.subplots(1, 1, figsize=(10, 6))
+
+results = []
+
+for alpha in 0, 0.01, 0.1, 1, 10:
+    spca = SparsePCA(n_components=2, alpha=alpha)
+    spca_data_2 = spca.fit_transform(data)
+
+    for i, component in enumerate(spca.components_):
+        results.append([alpha, i + 1, *component])
+
+print(tabulate(results, headers=['alpha', 'i', *range(data.shape[1])], tablefmt='orgtbl'))
+
+with open('./output/spca_alpha.tex', 'w') as f:
+    f.write(tabulate(results, headers=['alpha', 'i', *range(data.shape[1])], tablefmt='latex_booktabs', floatfmt='.3f'))
+#+end_src
+
+#+RESULTS:
+#+begin_example
+  |   alpha |   i |          0 |          1 |         2 |          3 |           4 |           5 |         6 |          7 |          8 |
+  |---------+-----+------------+------------+-----------+------------+-------------+-------------+-----------+------------+------------|
+  |    0    |   1 | -0.0342095 | -0.110442  |  0.909035 | -0.24902   | -0.0507955  |  0.00269769 | -0.140947 | -0.266828  | 0.0680135  |
+  |    0    |   2 |  0.513273  | -0.19867   | -0.1171   | -0.347363  | -0.216426   | -0.129301   |  0.502345 | -0.164292  | 0.468836   |
+  |    0.01 |   1 | -0.100348  | -0.0811734 |  0.917807 | -0.199658  | -0.019656   |  0.0172527  | -0.205093 | -0.241573  | 0.00192058 |
+  |    0.01 |   2 |  0.504528  | -0.210305  |  0        | -0.375515  | -0.220352   | -0.124499   |  0.47972  | -0.194933  | 0.477521   |
+  |    0.1  |   1 | -0.0665449 | -0.0714373 |  0.92832  | -0.202591  | -0.00954142 |  0          | -0.175827 | -0.237993  | 0          |
+  |    0.1  |   2 |  0.504693  | -0.199356  |  0        | -0.364529  | -0.2123     | -0.0949547  |  0.476069 | -0.169476  | 0.513039   |
+  |    1    |   1 |  0         |  0         |  0.998042 | -0.0371835 |  0          |  0          |  0        | -0.0502861 | 0          |
+  |    1    |   2 |  0         |  0         |  0        |  0         |  0          |  0          |  0        |  0         | 1          |
+  |   10    |   1 |  0         |  0         |  0        |  0         |  0          |  0          |  0        |  0         | 0          |
+  |   10    |   2 |  0         |  0         |  0        |  0         |  0          |  0          |  0        |  0         | 0          |
+#+end_example
+** Факторный анализ
+#+begin_src python
+from sklearn.decomposition import FactorAnalysis
+
+fa = FactorAnalysis(n_components=2)
+fa_data = fa.fit_transform(data)
+
+print(data.shape, fa_data.shape)
+#+end_src
+
+#+RESULTS:
+: (214, 9) (214, 2)
+*** Диаграмма рассеяния
+#+ATTR_LATEX: :width 7cm
+#+begin_src python :file img/s2.png
+fig, [ax1, ax2] = plt.subplots(1, 2, figsize=(10, 4))
+ax1.scatter(fa_data[:,0], fa_data[:,1], c=labels, cmap='tab10')
+ax2.scatter(pca_data[:,0], pca_data[:,1], c=labels, cmap='tab10')
+ax1.set_title('FactorAnalysis')
+ax2.set_title('PCA')
+fig.tight_layout()
+pass
+#+end_src
+
+#+RESULTS:
+[[file:img/s2.png]]
