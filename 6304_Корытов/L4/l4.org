@@ -1,0 +1,770 @@
+#+HTML_HEAD: <link rel="stylesheet" type="text/css" href="https://gongzhitaao.org/orgcss/org.css"/>
+#+PROPERTY: header-args:python :session *l4*
+#+PROPERTY: header-args:python+ :exports both
+#+PROPERTY: header-args:python+ :tangle yes
+
+#+begin_src elisp :exports none
+(setq-local org-image-actual-width '(1024))
+(setq-local org-html-htmlize-output-type 'css)
+(setq-local org-latex-listings 'minted)
+#+end_src
+
+#+RESULTS:
+: minted
+
+* Загрузка данных
+#+begin_src python :display plain
+import pandas as pd
+import numpy as np
+import tabulate
+
+tabulate._table_formats['booktabs_raw'] = tabulate._table_formats['latex_booktabs']._replace(**{
+        'headerrow': tabulate._table_formats['latex_raw'].headerrow,
+        'datarow': tabulate._table_formats['latex_raw'].datarow,
+    })
+
+all_data = pd.read_csv('../data/groceries - groceries.csv')
+all_data
+#+end_src
+
+#+RESULTS:
+#+begin_example
+        Item(s)               Item 1  ... Item 31 Item 32
+  0           4         citrus fruit  ...     NaN     NaN
+  1           3       tropical fruit  ...     NaN     NaN
+  2           1           whole milk  ...     NaN     NaN
+  3           4            pip fruit  ...     NaN     NaN
+  4           4     other vegetables  ...     NaN     NaN
+  ...       ...                  ...  ...     ...     ...
+  9830       17              sausage  ...     NaN     NaN
+  9831        1    cooking chocolate  ...     NaN     NaN
+  9832       10              chicken  ...     NaN     NaN
+  9833        4  semi-finished bread  ...     NaN     NaN
+  9834        5              chicken  ...     NaN     NaN
+
+  [9835 rows x 33 columns]
+#+end_example
+
+#+begin_src python :display plain
+np_data = all_data.to_numpy()
+np_data = [[elem for elem in row[1:] if isinstance(elem, str)] for row in np_data]
+
+unique_items = set()
+items_number = {}
+for row in np_data:
+    for elem in row:
+        unique_items.add(elem)
+        try:
+            items_number[elem] += 1
+        except KeyError:
+            items_number[elem] = 1
+
+items_df = pd.DataFrame(items_number.items(), columns=['item', 'number'])
+items_df = items_df.sort_values(by='number', ascending=False).reset_index(drop=True)
+
+with open('./output/items.txt', 'w') as f:
+    f.write(str(items_df))
+
+items_df
+#+end_src
+
+#+RESULTS:
+#+begin_example
+                        item  number
+  0               whole milk    2513
+  1         other vegetables    1903
+  2               rolls/buns    1809
+  3                     soda    1715
+  4                   yogurt    1372
+  ..                     ...     ...
+  164                   bags       4
+  165        kitchen utensil       4
+  166  preservation products       2
+  167              baby food       1
+  168   sound storage medium       1
+
+  [169 rows x 2 columns]
+#+end_example
+
+* FPGrowth и FPMax
+#+begin_src python :display plain
+from mlxtend.preprocessing import TransactionEncoder
+
+pd.options.display.max_columns = 4
+
+te = TransactionEncoder()
+te_ary = te.fit_transform(np_data)
+
+data = pd.DataFrame(te_ary, columns=te.columns_)
+with open('./output/data.txt', 'w') as f:
+    f.write(str(data))
+data
+#+end_src
+
+#+RESULTS:
+#+begin_example
+        Instant food products  UHT-milk  ...  yogurt  zwieback
+  0                     False     False  ...   False     False
+  1                     False     False  ...    True     False
+  2                     False     False  ...   False     False
+  3                     False     False  ...    True     False
+  4                     False     False  ...   False     False
+  ...                     ...       ...  ...     ...       ...
+  9830                  False     False  ...   False     False
+  9831                  False     False  ...   False     False
+  9832                  False     False  ...    True     False
+  9833                  False     False  ...   False     False
+  9834                  False     False  ...   False     False
+
+  [9835 rows x 169 columns]
+#+end_example
+
+#+begin_src python :display plain
+from mlxtend.frequent_patterns import fpgrowth
+
+fpg_result = fpgrowth(data, min_support=0.03, use_colnames=True)
+fpg_result = fpg_result.sort_values(by='support', ascending=False).reset_index(drop=True)
+with open('./output/fpg_result.txt', 'w') as f:
+    f.write(str(fpg_result))
+    
+fpg_result
+#+end_src
+
+#+RESULTS:
+#+begin_example
+       support                    itemsets
+  0   0.255516                (whole milk)
+  1   0.193493          (other vegetables)
+  2   0.183935                (rolls/buns)
+  3   0.174377                      (soda)
+  4   0.139502                    (yogurt)
+  ..       ...                         ...
+  58  0.031012                    (onions)
+  59  0.030605       (rolls/buns, sausage)
+  60  0.030503  (whole milk, citrus fruit)
+  61  0.030402       (specialty chocolate)
+  62  0.030097     (whole milk, pip fruit)
+
+  [63 rows x 2 columns]
+#+end_example
+
+#+begin_src python :display plain
+def get_support_limits(result):
+    data = {}
+    for datum in result.itertuples(index=False):
+        size = len(datum.itemsets)
+        try:
+            data[size]['min'] = min(datum.support, data[size]['min'])
+            data[size]['max'] = max(datum.support, data[size]['max'])
+        except KeyError:
+            data[size] = { 'min': datum.support, 'max': datum.support }
+    return pd.DataFrame(data)
+    
+
+fpg_limits = get_support_limits(fpg_result)
+with open('./output/fpg_limits.tex', 'w') as f:
+    f.write(tabulate.tabulate(fpg_limits, fpg_limits.columns, tablefmt='latex_booktabs'))
+fpg_limits
+#+end_src
+
+#+RESULTS:
+:             1         2
+: min  0.030402  0.030097
+: max  0.255516  0.074835
+
+#+begin_src python :display plain
+from mlxtend.frequent_patterns import fpmax
+
+fpm_result = fpmax(data, min_support=0.03, use_colnames=True)
+fpm_result = fpm_result.sort_values(by='support', ascending=False).reset_index(drop=True)
+
+pd.options.display.max_rows = 20
+
+with open('./output/fpm_result.txt', 'w') as f:
+    f.write(str(fpm_result))
+
+fpm_result 
+#+end_src
+
+#+RESULTS:
+#+begin_example
+       support                        itemsets
+  0   0.098526                 (shopping bags)
+  1   0.080529                  (bottled beer)
+  2   0.079817                    (newspapers)
+  3   0.077682                   (canned beer)
+  4   0.074835  (whole milk, other vegetables)
+  ..       ...                             ...
+  45  0.031012                        (onions)
+  46  0.030605           (rolls/buns, sausage)
+  47  0.030503      (whole milk, citrus fruit)
+  48  0.030402           (specialty chocolate)
+  49  0.030097         (whole milk, pip fruit)
+
+  [50 rows x 2 columns]
+#+end_example
+
+#+end_src
+
+#+RESULTS:
+
+#+begin_src python :display plain
+fpm_limits = get_support_limits(fpm_result)
+with open('./output/fpm_limits.tex', 'w') as f:
+    f.write(tabulate.tabulate(fpm_limits, fpm_limits.columns, tablefmt='latex_booktabs'))
+fpm_limits
+#+end_src
+
+#+RESULTS:
+:             1         2
+: min  0.030402  0.030097
+: max  0.098526  0.074835
+
+#+begin_src python :file img/top.png
+from matplotlib import pyplot as plt
+import matplotlib as mpl
+
+mpl.rcParams['figure.dpi'] = 200
+mpl.rcParams['figure.facecolor'] = '1'
+
+fig, ax = plt.subplots(figsize=(6, 3))
+items_df.head(10).iloc[::-1].plot(kind='barh', ax=ax, y='number', x='item')
+fig.tight_layout()
+pass
+#+end_src
+
+#+RESULTS:
+[[file:img/top.png]]
+
+#+begin_src python :display plain
+items = ['whole milk', 'yogurt', 'soda', 'tropical fruit', 'shopping bags', 'sausage',
+         'whipped/sour cream', 'rolls/buns', 'other vegetables', 'root vegetables',
+         'pork', 'bottled water', 'pastry', 'citrus fruit', 'canned beer', 
+         'bottled beer']
+
+np_data_f = all_data.to_numpy()
+np_data_f = [[elem for elem in row[1:] if isinstance(elem, str) and elem in items] for row in np_data_f]
+
+te_f = TransactionEncoder()
+te_ary_f = te_f.fit_transform(np_data_f)
+
+data_f = pd.DataFrame(te_ary_f, columns=te_f.columns_)
+
+with open('./output/data_f.txt', 'w') as f:
+    f.write(str(data_f))
+
+data_f
+#+end_src
+
+#+RESULTS:
+#+begin_example
+        bottled beer  bottled water  ...  whole milk  yogurt
+  0            False          False  ...       False   False
+  1            False          False  ...       False    True
+  2            False          False  ...        True   False
+  3            False          False  ...       False    True
+  4            False          False  ...        True   False
+  ...            ...            ...  ...         ...     ...
+  9830         False          False  ...        True   False
+  9831         False          False  ...       False   False
+  9832         False          False  ...       False    True
+  9833          True           True  ...       False   False
+  9834         False          False  ...       False   False
+
+  [9835 rows x 16 columns]
+#+end_example
+
+#+begin_src python :display plain
+fpg_result_f = fpgrowth(data_f, min_support=0.03, use_colnames=True)
+fpg_result_f = fpg_result_f.sort_values(by='support', ascending=False).reset_index(drop=True)
+with open('./output/fpg_result_f.txt', 'w') as f:
+    f.write(str(fpg_result_f))
+fpg_result_f
+#+end_src
+
+#+RESULTS:
+#+begin_example
+       support                          itemsets
+  0   0.255516                      (whole milk)
+  1   0.193493                (other vegetables)
+  2   0.183935                      (rolls/buns)
+  3   0.174377                            (soda)
+  4   0.139502                          (yogurt)
+  ..       ...                               ...
+  29  0.033249              (whole milk, pastry)
+  30  0.032740          (other vegetables, soda)
+  31  0.032232  (whipped/sour cream, whole milk)
+  32  0.030605             (rolls/buns, sausage)
+  33  0.030503        (whole milk, citrus fruit)
+
+  [34 rows x 2 columns]
+#+end_example
+
+#+begin_src python :display plain
+fpm_result_f = fpmax(data_f, min_support=0.03, use_colnames=True)
+fpm_result_f = fpm_result_f.sort_values(by='support', ascending=False).reset_index(drop=True)
+with open('./output/fpm_result_f.txt', 'w') as f:
+    f.write(str(fpm_result_f))
+fpm_result_f
+#+end_src
+
+#+RESULTS:
+#+begin_example
+       support                          itemsets
+  0   0.098526                   (shopping bags)
+  1   0.080529                    (bottled beer)
+  2   0.077682                     (canned beer)
+  3   0.074835    (whole milk, other vegetables)
+  4   0.057651                            (pork)
+  ..       ...                               ...
+  17  0.033249              (whole milk, pastry)
+  18  0.032740          (other vegetables, soda)
+  19  0.032232  (whipped/sour cream, whole milk)
+  20  0.030605             (rolls/buns, sausage)
+  21  0.030503        (whole milk, citrus fruit)
+
+  [22 rows x 2 columns]
+#+end_example
+
+#+begin_src python :display plain
+support_data = []
+
+def safe_max(arr):
+    if len(arr) == 0:
+        return 0
+    return np.max(arr)
+
+for min_support in np.logspace(-3, 0, num=20):
+    fpg_r = fpgrowth(data, min_support=min_support)
+    fpm_r = fpmax(data, min_support=min_support)
+    
+    fpg_r['length'] = fpg_r['itemsets'].apply(len)
+    fpm_r['length'] = fpm_r['itemsets'].apply(len)
+    
+    datum = {
+        'min_support': min_support,
+        'FPGrowth (total)': len(fpg_r),
+        'FPMax (total)': len(fpm_r),
+        **{f'FPGrowth ({n})': 0 for n in range(1, safe_max(fpg_r['length']) + 1)},
+        **{f'FPMax ({n})'   : 0 for n in range(1, safe_max(fpm_r['length']) + 1)},
+    }
+    
+    for res in fpg_r.itertuples(index=False):
+        datum[f'FPGrowth ({res.length})'] += 1
+        
+    for res in fpm_r.itertuples(index=False):
+        datum[f'FPMax ({res.length})'] += 1
+        
+    if min_support % 0.1 == 1:
+        print('Analyzing', min_support)
+        
+    support_data.append(datum)
+    
+support_df = pd.DataFrame(support_data).fillna(value=0)
+support_df
+#+end_src
+
+#+RESULTS:
+#+begin_example
+      min_support  FPGrowth (total)  ...  FPMax (5)  FPMax (6)
+  0      0.001000             13492  ...      326.0       10.0
+  1      0.001438              6774  ...       60.0        0.0
+  2      0.002069              3922  ...       13.0        0.0
+  3      0.002976              2226  ...        2.0        0.0
+  4      0.004281              1258  ...        0.0        0.0
+  5      0.006158               725  ...        0.0        0.0
+  6      0.008859               409  ...        0.0        0.0
+  7      0.012743               228  ...        0.0        0.0
+  8      0.018330               140  ...        0.0        0.0
+  9      0.026367                80  ...        0.0        0.0
+  10     0.037927                44  ...        0.0        0.0
+  11     0.054556                28  ...        0.0        0.0
+  12     0.078476                14  ...        0.0        0.0
+  13     0.112884                 5  ...        0.0        0.0
+  14     0.162378                 4  ...        0.0        0.0
+  15     0.233572                 1  ...        0.0        0.0
+  16     0.335982                 0  ...        0.0        0.0
+  17     0.483293                 0  ...        0.0        0.0
+  18     0.695193                 0  ...        0.0        0.0
+  19     1.000000                 0  ...        0.0        0.0
+
+  [20 rows x 15 columns]
+#+end_example
+
+#+begin_src python :file img/support_fpg.png
+fig, ax = plt.subplots(figsize=(10, 6))
+support_df[[col for col in support_df.columns if col.startswith('FPG') or col == 'min_support']] \
+    .plot(ax=ax, x='min_support', logy='sym', logx=True, colormap='jet')
+    
+ax.set_axisbelow(True)
+ax.grid(0.85)
+ax.set_title('FPGrowth')
+ax.set_ylabel('Количество наборов')
+fig.tight_layout()
+#+end_src
+
+#+RESULTS:
+[[file:img/support_fpg.png]]
+
+#+begin_src python :file img/support_fpm.png
+fig, ax = plt.subplots(figsize=(10, 6))
+support_df[[col for col in support_df.columns if col.startswith('FPM') or col == 'min_support']] \
+    .plot(ax=ax, x='min_support', logy='sym', logx=True, colormap='jet')
+    
+ax.set_axisbelow(True)
+ax.grid(0.85)
+ax.set_title('FPMax')
+ax.set_ylabel('Количество наборов')
+fig.tight_layout()
+#+end_src
+
+#+RESULTS:
+[[file:img/support_fpm.png]]
+
+* Ассоциативные правила
+#+begin_src python :display plain
+np_data_a = all_data.to_numpy()
+np_data_a = [[elem for elem in row[1:] if isinstance(elem, str) and elem in items] for row in np_data_a]
+np_data_a = [row for row in np_data_a if len(row) > 1]
+
+te_a = TransactionEncoder()
+te_ary_a = te_a.fit_transform(np_data_a)
+
+data_a = pd.DataFrame(te_ary_a, columns=te_a.columns_)
+data_a
+#+end_src
+
+#+RESULTS:
+#+begin_example
+        bottled beer  bottled water  ...  whole milk  yogurt
+  0            False          False  ...       False    True
+  1            False          False  ...        True   False
+  2            False          False  ...        True    True
+  3             True          False  ...       False   False
+  4            False           True  ...       False   False
+  ...            ...            ...  ...         ...     ...
+  4961         False          False  ...       False   False
+  4962         False          False  ...        True   False
+  4963         False          False  ...       False    True
+  4964          True           True  ...       False   False
+  4965         False          False  ...       False   False
+
+  [4966 rows x 16 columns]
+#+end_example
+
+#+begin_src python :display plain
+result_a = fpgrowth(data_a, min_support=0.05, use_colnames=True)
+
+with open('./output/result_a.txt', 'w') as f:
+    f.write(str(result_a))
+
+result_a
+#+end_src
+
+#+RESULTS:
+#+begin_example
+       support                                itemsets
+  0   0.241240                                (yogurt)
+  1   0.185864                        (tropical fruit)
+  2   0.421869                            (whole milk)
+  3   0.335079                      (other vegetables)
+  4   0.296214                            (rolls/buns)
+  ..       ...                                     ...
+  37  0.059203                   (whole milk, sausage)
+  38  0.053363             (sausage, other vegetables)
+  39  0.063834        (whipped/sour cream, whole milk)
+  40  0.057189  (whipped/sour cream, other vegetables)
+  41  0.065848                    (whole milk, pastry)
+
+  [42 rows x 2 columns]
+#+end_example
+
+#+begin_src python :display plain
+from mlxtend.frequent_patterns import association_rules
+rules = association_rules(result_a, min_threshold=0.3)
+pd.options.display.max_columns = 10
+with open('./output/rules.tex', 'w') as f:
+    r = rules.copy(deep=True)
+    r.antecedents = r.antecedents.apply(lambda a: str(list(a)))
+    r.consequents = r.consequents.apply(lambda a: str(list(a)))
+    r = r.rename({'antecedent support': 'ant. support', 'consequent support': 'cons. support'}, axis=1)
+    f.write(tabulate.tabulate(r, r.columns, tablefmt='latex_booktabs', floatfmt='.2f'))
+    
+rules
+#+end_src
+
+#+RESULTS:
+#+begin_example
+               antecedents         consequents  antecedent support  \
+  0               (yogurt)        (whole milk)            0.241240   
+  1               (yogurt)  (other vegetables)            0.241240   
+  2       (tropical fruit)            (yogurt)            0.185864   
+  3       (tropical fruit)  (other vegetables)            0.185864   
+  4       (tropical fruit)        (whole milk)            0.185864   
+  5           (whole milk)  (other vegetables)            0.421869   
+  6     (other vegetables)        (whole milk)            0.335079   
+  7           (rolls/buns)        (whole milk)            0.296214   
+  8        (bottled water)        (whole milk)            0.185461   
+  9        (bottled water)              (soda)            0.185461   
+  10        (citrus fruit)        (whole milk)            0.146395   
+  11        (citrus fruit)  (other vegetables)            0.146395   
+  12     (root vegetables)  (other vegetables)            0.196335   
+  13     (root vegetables)        (whole milk)            0.196335   
+  14             (sausage)        (rolls/buns)            0.167539   
+  15             (sausage)        (whole milk)            0.167539   
+  16             (sausage)  (other vegetables)            0.167539   
+  17  (whipped/sour cream)        (whole milk)            0.124245   
+  18  (whipped/sour cream)  (other vegetables)            0.124245   
+  19              (pastry)        (whole milk)            0.150624   
+
+      consequent support   support  confidence      lift  leverage  conviction  
+  0             0.421869  0.110954    0.459933  1.090228  0.009183    1.070481  
+  1             0.335079  0.085985    0.356427  1.063713  0.005150    1.033172  
+  2             0.241240  0.057994    0.312026  1.293423  0.013156    1.102890  
+  3             0.335079  0.071083    0.382449  1.141370  0.008804    1.076706  
+  4             0.421869  0.083770    0.450704  1.068352  0.005359    1.052495  
+  5             0.335079  0.148208    0.351313  1.048449  0.006849    1.025026  
+  6             0.421869  0.148208    0.442308  1.048449  0.006849    1.036649  
+  7             0.421869  0.112163    0.378654  0.897564 -0.012801    0.930450  
+  8             0.421869  0.068063    0.366992  0.869921 -0.010177    0.913309  
+  9             0.267217  0.057390    0.309446  1.158033  0.007832    1.061153  
+  10            0.421869  0.060411    0.412655  0.978159 -0.001349    0.984313  
+  11            0.335079  0.057189    0.390646  1.165836  0.008135    1.091192  
+  12            0.335079  0.093838    0.477949  1.426378  0.028050    1.273671  
+  13            0.421869  0.096859    0.493333  1.169400  0.014031    1.141049  
+  14            0.296214  0.060612    0.361779  1.221342  0.010985    1.102730  
+  15            0.421869  0.059203    0.353365  0.837619 -0.011477    0.894062  
+  16            0.335079  0.053363    0.318510  0.950552 -0.002776    0.975687  
+  17            0.421869  0.063834    0.513776  1.217858  0.011419    1.189023  
+  18            0.335079  0.057189    0.460292  1.373683  0.015557    1.232002  
+  19            0.421869  0.065848    0.437166  1.036260  0.002304    1.027179  
+#+end_example
+
+#+begin_src python
+rules_data = []
+kwargs_arr = [
+    {'min_threshold': 0.08, 'metric': 'support'},
+    {'min_threshold': 0.35, 'metric': 'confidence'},
+    {'min_threshold': 1.16, 'metric': 'lift'},
+    {'min_threshold': 0.01, 'metric': 'leverage'},
+    {'min_threshold': 1.05, 'metric': 'conviction'}
+]
+
+for kwargs in kwargs_arr:
+    rules_local = association_rules(result_a, **kwargs)
+    print(kwargs['metric'])
+    rules_local = rules_local[['antecedents', 'consequents', kwargs['metric']]]
+    print(rules_local)
+    
+    rules_data.append({
+        **kwargs,
+        'mean': rules_local[kwargs['metric']].mean(),
+        'median': rules_local[kwargs['metric']].median(),
+        'mse': np.sqrt(rules_local[kwargs['metric']].var()),
+    })
+    
+rules_df = pd.DataFrame(rules_data).set_index('metric')
+#+end_src
+
+#+RESULTS:
+#+begin_example
+  support
+             antecedents         consequents   support
+  0         (whole milk)            (yogurt)  0.110954
+  1             (yogurt)        (whole milk)  0.110954
+  2   (other vegetables)            (yogurt)  0.085985
+  3             (yogurt)  (other vegetables)  0.085985
+  4         (whole milk)    (tropical fruit)  0.083770
+  5     (tropical fruit)        (whole milk)  0.083770
+  6         (whole milk)  (other vegetables)  0.148208
+  7   (other vegetables)        (whole milk)  0.148208
+  8         (rolls/buns)  (other vegetables)  0.084374
+  9   (other vegetables)        (rolls/buns)  0.084374
+  10        (whole milk)        (rolls/buns)  0.112163
+  11        (rolls/buns)        (whole milk)  0.112163
+  12  (other vegetables)   (root vegetables)  0.093838
+  13   (root vegetables)  (other vegetables)  0.093838
+  14        (whole milk)   (root vegetables)  0.096859
+  15   (root vegetables)        (whole milk)  0.096859
+  confidence
+               antecedents         consequents  confidence
+  0               (yogurt)        (whole milk)    0.459933
+  1               (yogurt)  (other vegetables)    0.356427
+  2       (tropical fruit)  (other vegetables)    0.382449
+  3       (tropical fruit)        (whole milk)    0.450704
+  4           (whole milk)  (other vegetables)    0.351313
+  5     (other vegetables)        (whole milk)    0.442308
+  6           (rolls/buns)        (whole milk)    0.378654
+  7        (bottled water)        (whole milk)    0.366992
+  8         (citrus fruit)        (whole milk)    0.412655
+  9         (citrus fruit)  (other vegetables)    0.390646
+  10     (root vegetables)  (other vegetables)    0.477949
+  11     (root vegetables)        (whole milk)    0.493333
+  12             (sausage)        (rolls/buns)    0.361779
+  13             (sausage)        (whole milk)    0.353365
+  14  (whipped/sour cream)        (whole milk)    0.513776
+  15  (whipped/sour cream)  (other vegetables)    0.460292
+  16              (pastry)        (whole milk)    0.437166
+  lift
+               antecedents           consequents      lift
+  0       (tropical fruit)              (yogurt)  1.293423
+  1               (yogurt)      (tropical fruit)  1.293423
+  2     (other vegetables)        (citrus fruit)  1.165836
+  3         (citrus fruit)    (other vegetables)  1.165836
+  4     (other vegetables)     (root vegetables)  1.426378
+  5      (root vegetables)    (other vegetables)  1.426378
+  6           (whole milk)     (root vegetables)  1.169400
+  7      (root vegetables)          (whole milk)  1.169400
+  8           (rolls/buns)             (sausage)  1.221342
+  9              (sausage)          (rolls/buns)  1.221342
+  10  (whipped/sour cream)          (whole milk)  1.217858
+  11          (whole milk)  (whipped/sour cream)  1.217858
+  12  (whipped/sour cream)    (other vegetables)  1.373683
+  13    (other vegetables)  (whipped/sour cream)  1.373683
+  leverage
+               antecedents           consequents  leverage
+  0       (tropical fruit)              (yogurt)  0.013156
+  1               (yogurt)      (tropical fruit)  0.013156
+  2     (other vegetables)     (root vegetables)  0.028050
+  3      (root vegetables)    (other vegetables)  0.028050
+  4           (whole milk)     (root vegetables)  0.014031
+  5      (root vegetables)          (whole milk)  0.014031
+  6           (rolls/buns)             (sausage)  0.010985
+  7              (sausage)          (rolls/buns)  0.010985
+  8   (whipped/sour cream)          (whole milk)  0.011419
+  9           (whole milk)  (whipped/sour cream)  0.011419
+  10  (whipped/sour cream)    (other vegetables)  0.015557
+  11    (other vegetables)  (whipped/sour cream)  0.015557
+  conviction
+               antecedents           consequents  conviction
+  0               (yogurt)          (whole milk)    1.070481
+  1       (tropical fruit)              (yogurt)    1.102890
+  2               (yogurt)      (tropical fruit)    1.071797
+  3       (tropical fruit)    (other vegetables)    1.076706
+  4       (tropical fruit)          (whole milk)    1.052495
+  5        (bottled water)                (soda)    1.061153
+  6         (citrus fruit)    (other vegetables)    1.091192
+  7     (other vegetables)     (root vegetables)    1.116276
+  8      (root vegetables)    (other vegetables)    1.273671
+  9      (root vegetables)          (whole milk)    1.141049
+  10             (sausage)          (rolls/buns)    1.102730
+  11  (whipped/sour cream)          (whole milk)    1.189023
+  12  (whipped/sour cream)    (other vegetables)    1.232002
+  13    (other vegetables)  (whipped/sour cream)    1.055983
+#+end_example
+
+#+begin_src python :display plain
+with open('./output/rules_df.tex', 'w') as f:
+    f.write(tabulate.tabulate(rules_df, rules_df.columns, tablefmt='latex_booktabs'))
+
+rules_df
+#+end_src
+
+#+RESULTS:
+:             min_threshold      mean    median       mse
+: metric                                                 
+: support              0.08  0.102019  0.095348  0.021012
+: confidence           0.35  0.417044  0.412655  0.053484
+: lift                 1.16  1.266846  1.221342  0.097460
+: leverage             0.01  0.015533  0.013594  0.006063
+: conviction           1.05  1.116961  1.096961  0.068747
+
+#+begin_src python :display plain
+rules_g = association_rules(result_a, min_threshold=0.4, metric='confidence')
+rules_g
+#+end_src
+
+#+RESULTS:
+#+begin_example
+              antecedents         consequents  antecedent support  \
+  0              (yogurt)        (whole milk)            0.241240   
+  1      (tropical fruit)        (whole milk)            0.185864   
+  2    (other vegetables)        (whole milk)            0.335079   
+  3        (citrus fruit)        (whole milk)            0.146395   
+  4     (root vegetables)  (other vegetables)            0.196335   
+  5     (root vegetables)        (whole milk)            0.196335   
+  6  (whipped/sour cream)        (whole milk)            0.124245   
+  7  (whipped/sour cream)  (other vegetables)            0.124245   
+  8              (pastry)        (whole milk)            0.150624   
+
+     consequent support   support  confidence      lift  leverage  conviction  
+  0            0.421869  0.110954    0.459933  1.090228  0.009183    1.070481  
+  1            0.421869  0.083770    0.450704  1.068352  0.005359    1.052495  
+  2            0.421869  0.148208    0.442308  1.048449  0.006849    1.036649  
+  3            0.421869  0.060411    0.412655  0.978159 -0.001349    0.984313  
+  4            0.335079  0.093838    0.477949  1.426378  0.028050    1.273671  
+  5            0.421869  0.096859    0.493333  1.169400  0.014031    1.141049  
+  6            0.421869  0.063834    0.513776  1.217858  0.011419    1.189023  
+  7            0.335079  0.057189    0.460292  1.373683  0.015557    1.232002  
+  8            0.421869  0.065848    0.437166  1.036260  0.002304    1.027179  
+#+end_example
+
+#+begin_src python :file img/graph.png
+import networkx as nx
+
+DG = nx.DiGraph()
+
+def fix_label(label):
+    label = '\n'.join(label.split(' '))
+    return label[1:-1]
+
+edge_widths = []
+edge_labels = {}
+
+for rule in rules_g.itertuples(index=False):
+    source = fix_label(str(list(rule.antecedents)))
+    target = fix_label(str(list(rule.consequents)))
+    support = rule.support
+    confidence = rule.confidence
+    
+    DG.add_edge(source, target, weight=support, confidence=confidence)
+    edge_widths.append(support)
+    edge_labels[(source, target)] = f'{confidence:.3f}'
+    
+fig, ax = plt.subplots(figsize=(10, 6))
+
+edge_widths = ((edge_widths - np.min(edge_widths)) / (np.max(edge_widths) - np.min(edge_widths))) * 2 + 0.25
+
+nx.draw(DG, ax=ax, with_labels=True, pos=nx.planar_layout(DG), node_size=1500, font_size=6, width=edge_widths, node_color='#7D95FF')
+nx.draw_networkx_edge_labels(DG, pos=nx.planar_layout(DG), edge_labels=edge_labels)
+pass
+#+end_src
+
+#+RESULTS:
+[[file:img/graph.png]]
+
+#+begin_src python :file img/matrix.png
+from collections import OrderedDict
+
+fig, ax = plt.subplots(figsize=(7, 6))
+
+nodes = set()
+for rule in rules_g.itertuples(index=False):
+    nodes.add(str(list(rule.antecedents)))
+    nodes.add(str(list(rule.consequents)))
+    
+nodes = OrderedDict({node: i for i, node in enumerate(nodes)})
+    
+matrix = np.zeros((len(nodes), len(nodes)))
+for rule in rules_g.itertuples(index=False):
+    source = str(list(rule.antecedents))
+    target = str(list(rule.consequents))
+    
+    matrix[nodes[source], nodes[target]] = rule.confidence
+    
+ax.matshow(matrix)
+ax.set_xticks(list(nodes.values()))
+ax.set_xticklabels(nodes.keys(), rotation=90)
+ax.set_yticks(list(nodes.values()))
+ax.set_yticklabels(nodes.keys())
+
+for rule in rules_g.itertuples(index=False):
+    source = str(list(rule.antecedents))
+    target = str(list(rule.consequents))
+    ax.text(nodes[target], nodes[source], f'{rule.confidence:.4f}', ha='center', va='center')
+
+pass
+#+end_src
+
+#+RESULTS:
+[[file:img/matrix.png]]
