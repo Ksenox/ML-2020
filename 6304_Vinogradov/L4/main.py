@@ -147,7 +147,7 @@ metrics = ['confidence', 'lift', 'leverage', 'conviction']
 
 rules = association_rules(result, min_threshold=0.1)
 print(rules)
- for metr in metrics:
+for metr in metrics:
     print(metr, ' - \tMean: ', np.mean(rules[metr].to_numpy()),
           ' \tMedian: ', np.median(rules[metr].to_numpy()), ' \tMSD: ', np.sqrt(np.var(rules[metr].to_numpy())))
 
