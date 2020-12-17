@@ -1,0 +1,108 @@
+#+HTML_HEAD: <link rel="stylesheet" type="text/css" href="https://gongzhitaao.org/orgcss/org.css"/>
+#+PROPERTY: header-args:python :session *p6*
+#+PROPERTY: header-args:python+ :exports both
+#+PROPERTY: header-args:python+ :tangle yes
+
+#+begin_src elisp :exports none
+(setq-local org-image-actual-width '(1024))
+(setq-local org-html-htmlize-output-type 'css)
+(setq-local org-latex-listings 'minted)
+#+end_src
+
+#+begin_src python
+from collections import OrderedDict
+
+POINTS = OrderedDict({
+    'a': (5, 8),
+    'b': (6, 7),
+    'c': (6, 5),
+    'd': (2, 4),
+    'e': (3, 4),
+    'f': (5, 4),
+    'g': (7, 4),
+    'h': (9, 4),
+    'i': (3, 3),
+    'j': (8, 2),
+    'k': (7, 5)
+})
+
+POINTS
+#+end_src
+
+#+RESULTS:
+#+begin_example
+  OrderedDict([('a', (5, 8)),
+               ('b', (6, 7)),
+               ('c', (6, 5)),
+               ('d', (2, 4)),
+               ('e', (3, 4)),
+               ('f', (5, 4)),
+               ('g', (7, 4)),
+               ('h', (9, 4)),
+               ('i', (3, 3)),
+               ('j', (8, 2)),
+               ('k', (7, 5))])
+#+end_example
+
+#+begin_src python
+import numpy as np
+
+def L2(a, b):
+    return (abs(a[0] - b[0]) ** 0.5 + abs(a[1] - b[1])** 0.5) ** 2
+    
+
+def Lm(a, b):
+    return min(abs(a[0] - b[0]), abs(a[1] - b[1]))
+    
+Lm(POINTS['a'], POINTS['b'])
+#+end_src
+
+#+RESULTS:
+: 1
+
+#+begin_src python
+table = [['', *POINTS.keys()]]
+main = {}
+for i, (p1, c1) in enumerate(POINTS.items()):
+    row = [p1]
+    main[p1] = []
+    for j, (p2, c2) in enumerate(POINTS.items()):
+        dist = f'{Lm(c1, c2):.2f}'
+        if Lm(c1, c2) <= 1:
+            main[p1].append(p2)
+        row.append(dist)
+    table.append(row)
+    
+table
+#+end_src
+
+#+RESULTS:
+|   |    a |    b |    c |    d |    e |    f |    g |    h |    i |    j |    k |
+| a | 0.00 | 1.00 | 1.00 | 3.00 | 2.00 | 0.00 | 2.00 | 4.00 | 2.00 | 3.00 | 2.00 |
+| b | 1.00 | 0.00 | 0.00 | 3.00 | 3.00 | 1.00 | 1.00 | 3.00 | 3.00 | 2.00 | 1.00 |
+| c | 1.00 | 0.00 | 0.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 2.00 | 2.00 | 0.00 |
+| d | 3.00 | 3.00 | 1.00 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | 1.00 | 2.00 | 1.00 |
+| e | 2.00 | 3.00 | 1.00 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | 2.00 | 1.00 |
+| f | 0.00 | 1.00 | 1.00 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | 1.00 | 2.00 | 1.00 |
+| g | 2.00 | 1.00 | 1.00 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | 1.00 | 1.00 | 0.00 |
+| h | 4.00 | 3.00 | 1.00 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | 1.00 | 1.00 | 1.00 |
+| i | 2.00 | 3.00 | 2.00 | 1.00 | 0.00 | 1.00 | 1.00 | 1.00 | 0.00 | 1.00 | 2.00 |
+| j | 3.00 | 2.00 | 2.00 | 2.00 | 2.00 | 2.00 | 1.00 | 1.00 | 1.00 | 0.00 | 1.00 |
+| k | 2.00 | 1.00 | 0.00 | 1.00 | 1.00 | 1.00 | 0.00 | 1.00 | 2.00 | 1.00 | 0.00 |
+
+#+begin_src python
+import tabulate
+
+with open('./output/3_dist.tex', 'w') as f:
+    f.write(tabulate.tabulate(table, tablefmt='latex_booktabs'))
+#+end_src
+
+#+RESULTS:
+
+#+begin_src python
+from IPython.display import display
+print(main)
+#+end_src
+
+#+RESULTS:
+: {'a': ['a', 'b', 'c', 'f'], 'b': ['a', 'b', 'c', 'f', 'g', 'k'], 'c': ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'k'], 'd': ['c', 'd', 'e', 'f', 'g', 'h', 'i', 'k'], 'e': ['c', 'd', 'e', 'f', 'g', 'h', 'i', 'k'], 'f': ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'k'], 'g': ['b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k'], 'h': ['c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k'], 'i': ['d', 'e', 'f', 'g', 'h', 'i', 'j'], 'j': ['g', 'h', 'i', 'j', 'k'], 'k': ['b', 'c', 'd', 'e', 'f', 'g', 'h', 'j', 'k']}
