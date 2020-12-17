@@ -1,0 +1,189 @@
+#+HTML_HEAD: <link rel="stylesheet" type="text/css" href="https://gongzhitaao.org/orgcss/org.css"/>
+#+PROPERTY: header-args:python :session *p5*
+#+PROPERTY: header-args:python+ :exports both
+#+PROPERTY: header-args:python+ :tangle yes
+
+#+begin_src elisp :exports none
+(setq-local org-image-actual-width '(1024))
+(setq-local org-html-htmlize-output-type 'css)
+(setq-local org-latex-listings 'minted)
+#+end_src
+
+#+RESULTS:
+: minted
+* Задание 2
+#+begin_src python
+import numpy as np
+
+W_1 = [0.9, 0.8, 0.3, 0.1, 0.9, 0.8]
+W_2 = [0.1, 0.1, 0.7, 0.9, 0.1, 0.2]
+X = [2, 3, 7, 9, 2, 1]
+#+end_src
+
+#+RESULTS:
+
+#+begin_src python
+mu_1 = np.sum([a * b for a, b in zip(W_1, X)]) / np.sum(W_1)
+print(mu_1)
+mu_2 = np.sum([a * b for a, b in zip(W_2, X)]) / np.sum(W_2)
+print(mu_2)
+#+end_src
+
+#+RESULTS:
+: 2.5789473684210535
+: 6.619047619047618
+
+#+begin_src python
+def f(x, mu, sigma):
+    return 1 / (np.sqrt(2 * np.pi) * sigma) * np.exp(-((x - mu) ** 2) / (2 * sigma**2))
+    
+x = 5
+SIGMA = [1, 1]
+MU = [2, 7]
+P = [0.5, 0.5]
+
+p_1 = (f(x, MU[0], SIGMA[0]) * P[0] ) / (f(x, MU[0], SIGMA[0]) * P[1] + f(x, MU[1], SIGMA[1]) * P[1])
+p_2 = (f(x, MU[1], SIGMA[1]) * P[1] ) / (f(x, MU[0], SIGMA[0]) * P[1] + f(x, MU[1], SIGMA[1]) * P[1])
+print(p_1, p_2)
+f(x, MU[1], SIGMA[1])
+#+end_src
+
+#+RESULTS:
+:RESULTS:
+: 0.07585818002124355 0.9241418199787564
+: 0.05399096651318806
+:END:
+
+#+begin_src python :tangle clusters.py
+import numpy as np
+import tabulate
+
+tabulate._table_formats['booktabs_raw'] = tabulate._table_formats['latex_booktabs']._replace(**{
+        'headerrow': tabulate._table_formats['latex_raw'].headerrow,
+        'datarow': tabulate._table_formats['latex_raw'].datarow,
+    })
+
+
+X = [
+    [1, 0, 1, 1, 0],
+    [1, 1, 0, 1, 0],
+    [0, 0, 1, 1, 0],
+    [0, 1, 0, 1, 0],
+    [1, 0, 1, 0, 1],
+    [0, 1, 1, 0, 0]
+]
+
+def get_n(x_1, x_2):
+    res = [[0, 0], [0, 0]]
+    for a, b in zip(x_1, x_2):
+        res[a][b] += 1
+    return res
+
+def jc(x_1, x_2):
+    n = get_n(x_1, x_2)
+    return n[1][1] / (n[1][1] + n[1][0] + n[0][1])
+    
+def smc(x_1, x_2):
+    n = get_n(x_1, x_2)
+    return (n[1][1] + n[0][0]) / np.sum(n)
+    
+def rc(x_1, x_2):
+    n = get_n(x_1, x_2)
+    return n[1][1] / np.sum(n)
+
+def single_link(D, C_1, C_2):
+    min_ = None
+    for c_1 in C_1:
+        for c_2 in C_2:
+            d = D[c_1][c_2]
+            if min_ is None or d < min_:
+                min_ = d
+    return min_
+    
+def complete_link(D, C_1, C_2):
+    max_ = None
+    for c_1 in C_1:
+        for c_2 in C_2:
+            d = D[c_1][c_2]
+            if max_ is None or d > max_:
+                max_ = d
+    return max_
+
+def group_average(D, C_1, C_2):
+    avg = 0
+    for c_1 in C_1:
+        for c_2 in C_2:
+            avg += D[c_1][c_2]
+    avg /= len(C_1) * len(C_2)
+    return avg
+#+end_src
+
+#+RESULTS:
+
+
+#+begin_src python :tangle clusters.py
+import copy
+
+def do_cluster(X, p_dist, c_dist):
+    clusters = [[i] for i in range(len(X))]
+    levels = [copy.deepcopy(clusters)]
+    D = [[p_dist(x_1, x_2) for x_1 in X] for x_2 in X]
+    while len(clusters) > 1:
+        min_i, min_j, min_d = None, None, None
+        for i in range(len(clusters)):
+            for j in range(i + 1, len(clusters)):
+                d = c_dist(D, clusters[i], clusters[j])
+                if min_d is None or d < min_d:
+                    min_i, min_j, min_d = i, j, d
+        clusters[min_i].extend(clusters.pop(min_j))
+        clusters = [sorted(c) for c in clusters]
+        levels.append(copy.deepcopy(clusters))
+    return levels
+
+def save_levels(levels, name):
+    with open(name, 'w') as f:
+        f.write('\\begin{enumerate}\n')
+        for level in levels:
+            f.write(f'\\item \\ {level}\n')
+        f.write('\\end{enumerate}')
+
+l_1 = do_cluster(X, rc, single_link)
+save_levels(l_1, 'l_1.tex')
+l_1
+#+end_src
+
+#+RESULTS:
+| (0)           | (1) | (2) | (3)   | (4) | (5) |
+| (0)           | (1) | (2) | (3 4) | (5) |     |
+| (0 3 4)       | (1) | (2) | (5)   |     |     |
+| (0 1 3 4)     | (2) | (5) |       |     |     |
+| (0 1 2 3 4)   | (5) |     |       |     |     |
+| (0 1 2 3 4 5) |     |     |       |     |     |
+
+#+begin_src python :tangle clusters.py
+l_2 = do_cluster(X, smc, complete_link)
+save_levels(l_2, 'l_2.tex')
+l_2
+#+end_src
+
+#+RESULTS:
+| (0)           | (1)   | (2)   | (3)   | (4) | (5) |
+| (0)           | (1)   | (2)   | (3 4) | (5) |     |
+| (0 5)         | (1)   | (2)   | (3 4) |     |     |
+| (0 5)         | (1 2) | (3 4) |       |     |     |
+| (0 3 4 5)     | (1 2) |       |       |     |     |
+| (0 1 2 3 4 5) |       |       |       |     |     |
+
+#+begin_src python :tangle clusters.py
+l_3 = do_cluster(X, jc, group_average)
+save_levels(l_3, 'l_3.tex')
+l_3
+#+end_src
+
+#+RESULTS:
+| (0)           | (1)   | (2)   | (3)   | (4) | (5) |
+| (0)           | (1)   | (2)   | (3 4) | (5) |     |
+| (0 5)         | (1)   | (2)   | (3 4) |     |     |
+| (0 5)         | (1 2) | (3 4) |       |     |     |
+| (0 3 4 5)     | (1 2) |       |       |     |     |
+| (0 1 2 3 4 5) |       |       |       |     |     |
