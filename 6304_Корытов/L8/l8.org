@@ -1,0 +1,505 @@
+#+HTML_HEAD: <link rel="stylesheet" type="text/css" href="https://gongzhitaao.org/orgcss/org.css"/>
+#+PROPERTY: header-args:python :session *l8*
+#+PROPERTY: header-args:python+ :exports both
+#+PROPERTY: header-args:python+ :tangle yes
+#+PROPERTY: header-args:python+ :async yes
+
+#+begin_src elisp :exports none
+(setq-local org-image-actual-width '(1024))
+(setq-local org-html-htmlize-output-type 'css)
+(setq-local org-latex-listings 'minted)
+#+end_src
+
+#+RESULTS:
+: minted
+
+* Загрузка данных
+#+begin_src python :display plain
+from IPython.display import display
+from matplotlib import pyplot as plt
+
+import numpy as np
+import matplotlib as mpl
+import pandas as pd
+
+mpl.rcParams['figure.dpi'] = 200
+mpl.rcParams['figure.facecolor'] = '1'
+
+data = pd.read_csv('../data/iris.data',header=None)
+
+with open('./output/data.txt', 'w') as f:
+    f.write(str(data))
+    
+data
+#+end_src
+
+#+RESULTS:
+#+begin_example
+         0    1    2    3               4
+  0    5.1  3.5  1.4  0.2     Iris-setosa
+  1    4.9  3.0  1.4  0.2     Iris-setosa
+  2    4.7  3.2  1.3  0.2     Iris-setosa
+  3    4.6  3.1  1.5  0.2     Iris-setosa
+  4    5.0  3.6  1.4  0.2     Iris-setosa
+  ..   ...  ...  ...  ...             ...
+  145  6.7  3.0  5.2  2.3  Iris-virginica
+  146  6.3  2.5  5.0  1.9  Iris-virginica
+  147  6.5  3.0  5.2  2.0  Iris-virginica
+  148  6.2  3.4  5.4  2.3  Iris-virginica
+  149  5.9  3.0  5.1  1.8  Iris-virginica
+
+  [150 rows x 5 columns]
+#+end_example
+
+#+begin_src python :display plain
+X = data.iloc[:,:4].to_numpy()
+labels = data.iloc[:,4].to_numpy()
+#+end_src
+
+#+RESULTS:
+
+#+begin_src python
+from sklearn import preprocessing
+
+le = preprocessing.LabelEncoder()
+Y = le.fit_transform(labels)
+Y
+#+end_src
+
+#+RESULTS:
+: array([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+:        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+:        0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+:        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+:        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
+:        2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
+:        2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2])
+
+
+#+begin_src python
+from sklearn.model_selection import train_test_split
+X_train, X_test, y_train, y_test = train_test_split(X, Y, test_size=0.5)
+#+end_src
+
+#+RESULTS:
+
+* Линейный дискриминантный анализ
+#+begin_src python
+from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
+
+X_train, X_test, y_train, y_test = train_test_split(X, Y, test_size=0.5, 
+random_state=0)
+
+lda = LinearDiscriminantAnalysis()
+y_pred = lda.fit(X_train, y_train).predict(X_test)
+errors = (y_test != y_pred).sum()
+score = lda.score(X_test, y_test)
+
+print(errors, score)
+with open('./output/lda.txt', 'w') as f:
+    f.write(f'Количество ошибок: {errors}\n')
+    f.write(f'score: {score}')
+#+end_src
+
+#+RESULTS:
+: 3 0.96
+
+** График
+#+begin_src python
+test_sizes = np.arange(0.05, 0.95, 0.05)
+scores = []
+wrong = []
+
+for test_size in test_sizes:
+    X_train, X_test, y_train, y_test = train_test_split(X, Y, test_size=test_size, random_state=630417)
+    lda = LinearDiscriminantAnalysis()
+    
+    lda.fit(X_train, y_train)
+    y_pred = lda.predict(X_test)
+    scores.append(lda.score(X_test, y_test))
+    wrong.append((y_test != y_pred).sum())
+#+end_src
+
+#+RESULTS:
+
+#+begin_src python :file img/lda.png
+fig, [ax1, ax2] = plt.subplots(1, 2, figsize=(12, 6))
+ax1.plot(test_sizes, scores)
+ax2.plot(test_sizes, wrong)
+ax1.grid(0.75)
+ax2.grid(0.75)
+ax1.set_xlabel('test_size')
+ax2.set_xlabel('test_size')
+ax1.set_ylabel('score')
+ax2.set_ylabel('ошибок')
+pass
+#+end_src
+
+#+RESULTS:
+[[file:img/lda.png]]
+
+** Transform
+#+begin_src python :file img/lda_transform.png
+lda = LinearDiscriminantAnalysis()
+lda.fit(X, Y)
+X_r2 = lda.transform(X)
+
+colors = ['navy', 'turquoise', 'darkorange']
+
+fig, ax = plt.subplots(figsize=(10, 6))
+
+for class_, color in enumerate(colors):
+    ax.scatter(X_r2[Y == class_, 0], X_r2[Y == class_, 1], color=color)
+#+end_src
+
+#+RESULTS:
+[[file:img/lda_transform.png]]
+
+** Параметры
+#+begin_src python
+from sklearn.model_selection import GridSearchCV
+
+param_grid = [
+    { 'solver': ['lsqr', 'eigen'], 'shrinkage': ['auto', *np.linspace(0, 1, 11)] }
+]
+X_train, X_test, y_train, y_test = train_test_split(X, Y, test_size=0.5)
+
+lda = LinearDiscriminantAnalysis()
+grid = GridSearchCV(lda, param_grid)
+grid.fit(X, Y)
+#+end_src
+
+#+RESULTS:
+: GridSearchCV(estimator=LinearDiscriminantAnalysis(),
+:              param_grid=[{'shrinkage': ['auto', 0.0, 0.1, 0.2,
+:                                         0.30000000000000004, 0.4, 0.5,
+:                                         0.6000000000000001, 0.7000000000000001,
+:                                         0.8, 0.9, 1.0],
+:                           'solver': ['lsqr', 'eigen']}])
+
+#+begin_src python :display plain
+from IPython.display import display
+import tabulate
+df = pd.DataFrame(grid.cv_results_)
+df = df[['param_solver', 'param_shrinkage', 'mean_test_score', 'std_test_score']]
+
+with open('./output/lda_grid.tex', 'w') as f:
+    f.write(tabulate.tabulate(df, headers=df.columns, tablefmt='latex_booktabs'))
+    
+display(df)
+#+end_src
+
+#+RESULTS:
+#+begin_example
+     param_solver param_shrinkage  mean_test_score  std_test_score
+  0          lsqr            auto         0.980000        0.026667
+  1         eigen            auto         0.980000        0.026667
+  2          lsqr               0         0.980000        0.026667
+  3         eigen               0         0.980000        0.026667
+  4          lsqr             0.1         0.980000        0.026667
+  5         eigen             0.1         0.980000        0.026667
+  6          lsqr             0.2         0.973333        0.024944
+  7         eigen             0.2         0.973333        0.024944
+  8          lsqr             0.3         0.966667        0.029814
+  9         eigen             0.3         0.966667        0.029814
+  10         lsqr             0.4         0.980000        0.016330
+  11        eigen             0.4         0.980000        0.016330
+  12         lsqr             0.5         0.980000        0.016330
+  13        eigen             0.5         0.980000        0.016330
+  14         lsqr             0.6         0.960000        0.024944
+  15        eigen             0.6         0.960000        0.024944
+  16         lsqr             0.7         0.953333        0.026667
+  17        eigen             0.7         0.953333        0.026667
+  18         lsqr             0.8         0.953333        0.026667
+  19        eigen             0.8         0.953333        0.026667
+  20         lsqr             0.9         0.940000        0.038873
+  21        eigen             0.9         0.940000        0.038873
+  22         lsqr               1         0.920000        0.033993
+  23        eigen               1         0.920000        0.033993
+#+end_example
+
+** Априорная вероятность
+#+begin_src python
+X_train, X_test, y_train, y_test = train_test_split(X, Y, test_size=0.5)
+
+priors = (0.7, 0.15, 0.15)
+lda = LinearDiscriminantAnalysis(priors=priors)
+lda.fit(X_train, y_train)
+
+y_pred = lda.fit(X_train, y_train).predict(X_test)
+errors = (y_test != y_pred).sum()
+score = lda.score(X_test, y_test)
+
+print(errors, score)
+with open('./output/lda_priors.txt', 'w') as f:
+    f.write(f'Количество ошибок: {errors}\n')
+    f.write(f'score: {score}')
+#+end_src
+
+#+RESULTS:
+: 3 0.96
+
+#+begin_src python
+scores = []
+wrong = []
+
+for test_size in test_sizes:
+    X_train, X_test, y_train, y_test = train_test_split(X, Y, test_size=test_size, random_state=630417)
+    lda = LinearDiscriminantAnalysis(priors=priors)
+    
+    lda.fit(X_train, y_train)
+    y_pred = lda.predict(X_test)
+    scores.append(lda.score(X_test, y_test))
+    wrong.append((y_test != y_pred).sum())
+#+end_src
+
+#+RESULTS:
+
+#+begin_src python :file img/lda_priors.png
+fig, [ax1, ax2] = plt.subplots(1, 2, figsize=(12, 6))
+ax1.plot(test_sizes, scores)
+ax2.plot(test_sizes, wrong)
+ax1.grid(0.75)
+ax2.grid(0.75)
+ax1.set_xlabel('test_size')
+ax2.set_xlabel('test_size')
+ax1.set_ylabel('score')
+ax2.set_ylabel('ошибок')
+pass
+#+end_src
+
+#+RESULTS:
+[[file:img/lda_priors.png]]
+
+* Метод опорных векторов
+** Классификация
+#+begin_src python
+from sklearn.svm import SVC
+
+X_train, X_test, y_train, y_test = train_test_split(X, Y, test_size=0.5, random_state=0)
+
+svc = SVC()
+
+y_pred = svc.fit(X_train, y_train).predict(X_test)
+errors = (y_test != y_pred).sum()
+score = svc.score(X_test, y_test)
+
+print(errors, score)
+with open('./output/svc.txt', 'w') as f:
+    f.write(f'Количество ошибок: {errors}\n')
+    f.write(f'score: {score}')
+#+end_src
+
+#+RESULTS:
+: 4 0.9466666666666667
+** Информация
+#+begin_src python
+print(svc.support_vectors_)
+print(svc.support_)
+print(svc.n_support_)
+
+with open('./output/svc_params.txt', 'w') as f:
+    f.write(f'support_vectors_: {svc.support_vectors_}\n')
+    f.write(f'support_: {svc.support_}\n')
+    f.write(f'n_support_: {svc.n_support_}')
+#+end_src
+
+#+RESULTS:
+#+begin_example
+  [[4.5 2.3 1.3 0.3]
+   [5.4 3.9 1.7 0.4]
+   [5.1 3.3 1.7 0.5]
+   [5.  3.  1.6 0.2]
+   [5.1 2.5 3.  1.1]
+   [6.2 2.2 4.5 1.5]
+   [5.7 2.9 4.2 1.3]
+   [5.7 2.8 4.5 1.3]
+   [6.6 3.  4.4 1.4]
+   [6.4 2.9 4.3 1.3]
+   [4.9 2.4 3.3 1. ]
+   [6.7 3.1 4.4 1.4]
+   [5.7 2.6 3.5 1. ]
+   [6.3 2.5 4.9 1.5]
+   [6.7 3.  5.  1.7]
+   [5.5 2.4 3.7 1. ]
+   [6.6 2.9 4.6 1.3]
+   [5.6 3.  4.1 1.3]
+   [5.9 3.2 4.8 1.8]
+   [6.3 2.3 4.4 1.3]
+   [5.9 3.  5.1 1.8]
+   [6.4 2.8 5.6 2.1]
+   [6.5 3.2 5.1 2. ]
+   [6.2 3.4 5.4 2.3]
+   [5.7 2.5 5.  2. ]
+   [6.9 3.1 5.4 2.1]
+   [7.2 3.  5.8 1.6]
+   [7.9 3.8 6.4 2. ]
+   [6.  3.  4.8 1.8]
+   [6.4 3.2 5.3 2.3]
+   [6.7 3.  5.2 2.3]
+   [5.8 2.7 5.1 1.9]
+   [6.3 2.9 5.6 1.8]]
+  [16 26 36 59  2  4  6 33 34 37 40 42 54 57 58 60 64 65 66 67  1 11 14 17
+   19 20 23 41 44 55 56 62 71]
+  [ 4 16 13]
+#+end_example
+** График
+#+begin_src python
+scores = []
+wrong = []
+
+for test_size in test_sizes:
+    X_train, X_test, y_train, y_test = train_test_split(X, Y, test_size=test_size, random_state=630417)
+    svc = SVC()
+    
+    svc.fit(X_train, y_train)
+    y_pred = svc.predict(X_test)
+    scores.append(svc.score(X_test, y_test))
+    wrong.append((y_test != y_pred).sum())
+#+end_src
+
+#+RESULTS:
+
+#+begin_src python :file img/svc.png
+fig, [ax1, ax2] = plt.subplots(1, 2, figsize=(12, 6))
+ax1.plot(test_sizes, scores)
+ax2.plot(test_sizes, wrong)
+ax1.grid(0.75)
+ax2.grid(0.75)
+ax1.set_xlabel('test_size')
+ax2.set_xlabel('test_size')
+ax1.set_ylabel('score')
+ax2.set_ylabel('ошибок')
+pass
+#+end_src
+
+#+RESULTS:
+[[file:img/svc.png]]
+** Параметры
+#+begin_src python
+import warnings
+warnings.filterwarnings('ignore') 
+
+param_grid = [
+    { 'kernel': ['linear', 'rbf', 'sigmoid'], 'max_iter': [-1, 10, 100, 1000] },
+    { 'kernel': ['poly'], 'degree': [1, 2, 3, 4, 5], 'max_iter': [-1, 10, 100, 1000] }
+]
+
+svc = SVC()
+grid = GridSearchCV(svc, param_grid)
+grid.fit(X, Y)
+#+end_src
+
+#+RESULTS:
+: GridSearchCV(estimator=SVC(),
+:              param_grid=[{'kernel': ['linear', 'rbf', 'sigmoid'],
+:                           'max_iter': [-1, 10, 100, 1000]},
+:                          {'degree': [1, 2, 3, 4, 5], 'kernel': ['poly'],
+:                           'max_iter': [-1, 10, 100, 1000]}])
+
+#+begin_src python :display plain
+df = pd.DataFrame(grid.cv_results_)
+df = df[['param_kernel', 'param_max_iter', 'param_degree', 'mean_test_score', 'std_test_score']]
+
+df = df.sort_values(by='mean_test_score', axis=0, ascending=False)
+
+with open('./output/svc_grid.tex', 'w') as f:
+    f.write(tabulate.tabulate(df, headers=df.columns, tablefmt='latex_booktabs', floatfmt='.3f'))
+    
+display(df)
+#+end_src
+
+#+RESULTS:
+#+begin_example
+     param_kernel param_max_iter param_degree  mean_test_score  std_test_score
+  1        linear             10          NaN         0.993333        0.013333
+  16         poly             -1            2         0.986667        0.016330
+  19         poly           1000            2         0.986667        0.016330
+  18         poly            100            2         0.986667        0.016330
+  13         poly             10            1         0.980000        0.026667
+  23         poly           1000            3         0.980000        0.016330
+  22         poly            100            3         0.980000        0.016330
+  20         poly             -1            3         0.980000        0.016330
+  0        linear             -1          NaN         0.980000        0.016330
+  5           rbf             10          NaN         0.980000        0.016330
+  2        linear            100          NaN         0.980000        0.016330
+  3        linear           1000          NaN         0.980000        0.016330
+  31         poly           1000            5         0.973333        0.032660
+  28         poly             -1            5         0.973333        0.032660
+  30         poly            100            5         0.966667        0.042164
+  27         poly           1000            4         0.966667        0.042164
+  26         poly            100            4         0.966667        0.042164
+  24         poly             -1            4         0.966667        0.042164
+  21         poly             10            3         0.966667        0.042164
+  4           rbf             -1          NaN         0.966667        0.021082
+  6           rbf            100          NaN         0.966667        0.021082
+  7           rbf           1000          NaN         0.966667        0.021082
+  15         poly           1000            1         0.953333        0.026667
+  14         poly            100            1         0.953333        0.026667
+  12         poly             -1            1         0.953333        0.026667
+  17         poly             10            2         0.940000        0.048990
+  29         poly             10            5         0.840000        0.151144
+  25         poly             10            4         0.806667        0.187853
+  10      sigmoid            100          NaN         0.066667        0.059628
+  8       sigmoid             -1          NaN         0.066667        0.059628
+  11      sigmoid           1000          NaN         0.066667        0.059628
+  9       sigmoid             10          NaN         0.053333        0.049889
+#+end_example
+** NuSVC
+#+begin_src python :file img/nu.png
+from sklearn.svm import NuSVC
+
+param_grid = [
+    { 'kernel': ['linear', 'rbf', 'sigmoid', 'poly'], 'nu': np.linspace(0.1, 1, 10) },
+]
+nu_svc = NuSVC()
+grid = GridSearchCV(nu_svc, param_grid)
+grid.fit(X, Y)
+
+df = pd.DataFrame(grid.cv_results_)
+df = df[['param_kernel', 'param_nu', 'mean_test_score', 'std_test_score']]
+
+fig, ax = plt.subplots(figsize=(10, 6))
+for name, group in df.groupby('param_kernel'):
+    group.plot(ax=ax, x='param_nu', y='mean_test_score', label=name)
+ax.legend()
+ax.grid(0.75)
+pass
+#+end_src
+
+#+RESULTS:
+[[file:img/nu.png]]
+** LinearSVC
+#+begin_src python :display plain
+from sklearn.svm import LinearSVC
+param_grid = [
+    { 'penalty': ['l2'], 'loss': ['hinge', 'squared_hidge'], 'C': [0.1, 1, 10] },
+    { 'penalty': ['l1'], 'loss': ['squared_hidge'], 'C': [0.1, 1, 10] }
+]
+
+l_svc = LinearSVC()
+grid = GridSearchCV(l_svc, param_grid)
+grid.fit(X, Y)
+
+df = pd.DataFrame(grid.cv_results_)
+df = df[['param_penalty', 'param_loss', 'param_C', 'mean_test_score', 'std_test_score']]
+
+df = df.sort_values(by='mean_test_score', axis=0, ascending=False)
+
+with open('./output/l_svc_grid.tex', 'w') as f:
+    f.write(tabulate.tabulate(df, headers=df.columns, tablefmt='latex_booktabs'))
+    
+display(df)
+#+end_src
+
+#+RESULTS:
+:   param_penalty     param_loss param_C  mean_test_score  std_test_score
+: 2            l2          hinge       1         0.940000        0.048990
+: 4            l2          hinge      10         0.933333        0.055777
+: 0            l2          hinge     0.1         0.766667        0.021082
+: 1            l2  squared_hidge     0.1              NaN             NaN
+: 3            l2  squared_hidge       1              NaN             NaN
+: 5            l2  squared_hidge      10              NaN             NaN
+: 6            l1  squared_hidge     0.1              NaN             NaN
+: 7            l1  squared_hidge       1              NaN             NaN
+: 8            l1  squared_hidge      10              NaN             NaN
