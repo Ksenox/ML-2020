@@ -1,0 +1,325 @@
+#+HTML_HEAD: <link rel="stylesheet" type="text/css" href="https://gongzhitaao.org/orgcss/org.css"/>
+#+PROPERTY: header-args:python :session *l7*
+#+PROPERTY: header-args:python+ :exports both
+#+PROPERTY: header-args:python+ :tangle yes
+#+PROPERTY: header-args:python+ :async yes
+
+#+begin_src elisp :exports none
+(setq-local org-image-actual-width '(1024))
+(setq-local org-html-htmlize-output-type 'css)
+(setq-local org-latex-listings 'minted)
+#+end_src
+
+#+RESULTS:
+: minted
+
+* Загрузка данных
+#+begin_src python :display plain
+from IPython.display import display
+from matplotlib import pyplot as plt
+
+import numpy as np
+import matplotlib as mpl
+import pandas as pd
+
+mpl.rcParams['figure.dpi'] = 200
+mpl.rcParams['figure.facecolor'] = '1'
+
+data = pd.read_csv('../data/iris.data',header=None)
+
+with open('./output/data.txt', 'w') as f:
+    f.write(str(data))
+    
+data
+#+end_src
+
+#+RESULTS:
+#+begin_example
+         0    1    2    3               4
+  0    5.1  3.5  1.4  0.2     Iris-setosa
+  1    4.9  3.0  1.4  0.2     Iris-setosa
+  2    4.7  3.2  1.3  0.2     Iris-setosa
+  3    4.6  3.1  1.5  0.2     Iris-setosa
+  4    5.0  3.6  1.4  0.2     Iris-setosa
+  ..   ...  ...  ...  ...             ...
+  145  6.7  3.0  5.2  2.3  Iris-virginica
+  146  6.3  2.5  5.0  1.9  Iris-virginica
+  147  6.5  3.0  5.2  2.0  Iris-virginica
+  148  6.2  3.4  5.4  2.3  Iris-virginica
+  149  5.9  3.0  5.1  1.8  Iris-virginica
+
+  [150 rows x 5 columns]
+#+end_example
+
+#+begin_src python :display plain
+X = data.iloc[:,:4].to_numpy()
+labels = data.iloc[:,4].to_numpy()
+#+end_src
+
+#+RESULTS:
+
+#+begin_src python
+from sklearn import preprocessing
+
+le = preprocessing.LabelEncoder()
+Y = le.fit_transform(labels)
+Y
+#+end_src
+
+#+RESULTS:
+: array([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+:        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+:        0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+:        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+:        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
+:        2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
+:        2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2])
+
+
+#+begin_src python
+from sklearn.model_selection import train_test_split
+X_train, X_test, y_train, y_test = train_test_split(X, Y, test_size=0.5)
+#+end_src
+
+#+RESULTS:
+
+* Байесовские методы
+** Наивный байесовский метод
+#+begin_src python
+from sklearn.naive_bayes import GaussianNB
+gnb = GaussianNB()
+
+y_pred = gnb.fit(X_train, y_train).predict(X_test)
+
+print((y_test != y_pred).sum())
+#+end_src
+
+#+RESULTS:
+: 6
+** score
+#+begin_src python
+print(gnb.score(X_test, y_test))
+
+with open('./output/gnb.txt', 'w') as f:
+    f.write(f'Количество ошибок: {(y_test != y_pred).sum()}\n')
+    f.write(f'score: {gnb.score(X_test, y_test)}')
+#+end_src
+
+#+RESULTS:
+: 0.92
+** График
+#+begin_src python
+test_sizes = np.arange(0.05, 0.95, 0.05)
+scores = []
+wrong = []
+
+for test_size in test_sizes:
+    X_train, X_test, y_train, y_test = train_test_split(X, Y, test_size=test_size, random_state=630417)
+    gnb = GaussianNB()
+    
+    gnb.fit(X_train, y_train)
+    y_pred = gnb.predict(X_test)
+    scores.append(gnb.score(X_test, y_test))
+    wrong.append((y_test != y_pred).sum())
+#+end_src
+
+#+RESULTS:
+
+#+begin_src python :file img/gnb.png
+fig, [ax1, ax2] = plt.subplots(1, 2, figsize=(12, 6))
+ax1.plot(test_sizes, scores)
+ax2.plot(test_sizes, wrong)
+ax1.grid(0.75)
+ax2.grid(0.75)
+ax1.set_xlabel('test_size')
+ax2.set_xlabel('test_size')
+ax1.set_ylabel('score')
+ax2.set_ylabel('ошибок')
+pass
+#+end_src
+
+#+RESULTS:
+[[file:img/gnb.png]]
+** Всякое
+#+begin_src python
+from sklearn.naive_bayes import MultinomialNB, ComplementNB, BernoulliNB
+scores_2 = { 'mnb': [], 'cnb': [], 'bnb': [] }
+wrong_2 = { 'mnb': [], 'cnb': [], 'bnb': [] }
+
+for test_size in test_sizes:
+    X_train, X_test, y_train, y_test = train_test_split(X, Y, test_size=test_size, random_state=630417)
+    
+    mnb = MultinomialNB()
+    mnb.fit(X_train, y_train)
+    scores_2['mnb'].append(mnb.score(X_test, y_test))
+    y_pred = mnb.predict(X_test)
+    wrong_2['mnb'].append((y_test != y_pred).sum())
+
+    cnb = ComplementNB()
+    cnb.fit(X_train, y_train)
+    scores_2['cnb'].append(cnb.score(X_test, y_test))
+    y_pred = cnb.predict(X_test)
+    wrong_2['cnb'].append((y_test != y_pred).sum())
+    
+    bnb = BernoulliNB()
+    bnb.fit(X_train, y_train)
+    scores_2['bnb'].append(bnb.score(X_test, y_test))
+    y_pred = bnb.predict(X_test)
+    wrong_2['bnb'].append((y_test != y_pred).sum())
+#+end_src
+
+#+RESULTS:
+
+#+begin_src python :file img/b.png
+fig, [ax1, ax2] = plt.subplots(1, 2, figsize=(10, 6))
+
+df1 = pd.DataFrame({ **scores_2, 'test_size': test_sizes})
+df1 = df1.rename({'mnb': 'MultinomialNB', 'cnb': 'ComplementNB', 'bnb': 'BernoulliNB'}, axis=1)
+df1.plot(ax=ax1, x='test_size')
+ax1.set_ylabel('score')
+ax1.grid(0.75)
+
+df2 = pd.DataFrame({ **wrong_2, 'test_size': test_sizes})
+df2 = df2.rename({'mnb': 'MultinomialNB', 'cnb': 'ComplementNB', 'bnb': 'BernoulliNB'}, axis=1)
+df2.plot(ax=ax2, x='test_size')
+ax2.set_ylabel('ошибок')
+ax2.grid(0.75)
+#+end_src
+
+#+RESULTS:
+[[file:img/b.png]]
+* Классифицирующие деревья
+#+begin_src python
+from sklearn import tree
+
+clf = tree.DecisionTreeClassifier()
+
+X_train, X_test, y_train, y_test = train_test_split(X, Y, test_size=0.5)
+
+y_pred = clf.fit(X_train, y_train).predict(X_test)
+print((y_test != y_pred).sum())
+#+end_src
+
+#+RESULTS:
+: 5
+** score
+#+begin_src python
+print(clf.score(X_test, y_test))
+
+with open('./output/tree.txt', 'w') as f:
+    f.write(f'Количество ошибок: {(y_test != y_pred).sum()}\n')
+    f.write(f'score: {clf.score(X_test, y_test)}\n')
+#+end_src
+
+#+RESULTS:
+: 0.9333333333333333
+** Характеристики
+#+begin_src python
+print('num_leaves', clf.get_n_leaves())
+print('depth', clf.get_depth())
+
+with open('./output/tree2.txt', 'w') as f:
+    f.write(f'num_leaves: {clf.get_n_leaves()}\n')
+    f.write(f'depth: {clf.get_depth()}')
+#+end_src
+
+#+RESULTS:
+: num_leaves 6
+: depth 5
+** Дерево
+#+begin_src python :file img/tree_chart.png
+import matplotlib.pyplot as plt
+fig, ax = plt.subplots(1, 1, figsize=(10,10))
+tree.plot_tree(clf, ax=ax, filled=True)
+
+pass
+#+end_src
+
+#+RESULTS:
+[[file:img/tree_chart.png]]
+** График
+#+begin_src python
+test_sizes = np.arange(0.05, 0.95, 0.05)
+scores = []
+wrong = []
+
+for test_size in test_sizes:
+    X_train, X_test, y_train, y_test = train_test_split(X, Y, test_size=test_size, random_state=630417)
+    clf = tree.DecisionTreeClassifier()
+    
+    clf.fit(X_train, y_train)
+    y_pred = clf.predict(X_test)
+    scores.append(clf.score(X_test, y_test))
+    wrong.append((y_test != y_pred).sum())
+#+end_src
+
+#+RESULTS:
+
+#+begin_src python :file img/tree.png
+fig, [ax1, ax2] = plt.subplots(1, 2, figsize=(12, 6))
+ax1.plot(test_sizes, scores)
+ax2.plot(test_sizes, wrong)
+ax1.grid(0.75)
+ax2.grid(0.75)
+ax1.set_xlabel('test_size')
+ax2.set_xlabel('test_size')
+ax1.set_ylabel('score')
+ax2.set_ylabel('ошибок')
+pass
+#+end_src
+
+#+RESULTS:
+[[file:img/tree.png]]
+** Параметры
+#+begin_src python
+PARAMS = [
+    [
+        { 'criterion': 'gini' },
+        { 'criterion': 'entropy' }
+    ],
+    [
+        { 'splitter': 'best' },
+        { 'splitter': 'random' }
+    ],
+    [
+        *[{ 'max_depth': d } for d in range(1, 6)]
+    ],
+    [
+        *[{ 'min_samples_split': d } for d in range(2, 50, 10)]
+    ],
+    [
+        *[{ 'min_samples_leaf': d } for d in range(1, 50, 10)]
+    ]
+]
+#+end_src
+
+#+RESULTS:
+
+#+begin_src python
+cmap = mpl.cm.get_cmap('viridis')
+
+for i, param_group in enumerate(PARAMS):
+    fig, ax = plt.subplots(1, 1, figsize=(6, 4))
+    for j, param in enumerate(param_group):
+        scores = []
+        for test_size in test_sizes:
+            X_train, X_test, y_train, y_test = train_test_split(X, Y, test_size=test_size, random_state=630417)
+            clf = tree.DecisionTreeClassifier(**param)
+            
+            clf.fit(X_train, y_train)
+            scores.append(clf.score(X_test, y_test))
+        ax.plot(test_sizes, scores, label=str(param), color=cmap(j / len(param_group)))
+    ax.legend()
+    ax.grid(0.75)
+    ax.set_ylabel('score')
+    fig.savefig(f'./img/{i}.png')
+#+end_src
+
+#+RESULTS:
+:RESULTS:
+[[file:./.ob-jupyter/3126d2d29975ebe57d03f88bb2e970f7959c937c.png]]
+[[file:./.ob-jupyter/3349cb1423734accea91c9fbaa50ba41572efca3.png]]
+[[file:./.ob-jupyter/78c4367aba28f66209cb362d9a585ed756d32767.png]]
+[[file:./.ob-jupyter/7e2fad0c373b812b9d70f13f69bdb4f08cde4b0e.png]]
+[[file:./.ob-jupyter/9d55b892220d05e9db7f968cf46d4f71ce21d8d8.png]]
+:END:
